@@ -1,0 +1,13 @@
+@import 'tailwindcss';
+
+/* This app's design is light-mode only by intent (every color is an
+   explicit Tailwind utility) — opting out of automatic dark-mode
+   adaptation avoids the browser silently reinterpreting unstyled native
+   elements (form controls, scrollbars) against a light UI. */
+:root {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+}

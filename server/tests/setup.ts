@@ -1,0 +1,5 @@
+process.env.NODE_ENV ??= 'test'
+process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/coffee_shop_pos_test'
+process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-please-change-32-characters-min'
+process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-please-change-32-characters-min'
+process.env.CORS_ORIGIN ??= 'http://localhost:5173'
