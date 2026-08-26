@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Product } from '../catalog/types'
-import { activeModifiers, activeVariants } from './productHelpers'
+import { activeModifiers, activeVariants } from './utils/productHelpers'
 import { formatCents } from '../../lib/money'
 import { calcLineTotal } from './cart/pricing'
 import type { AddItemPayload, CartLineModifier } from './cart/types'
@@ -95,12 +95,12 @@ export function ProductPicker({ product, onAdd, onClose }: ProductPickerProps) {
       role="dialog"
       aria-modal="true"
       aria-labelledby="product-picker-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4"
       onClick={onClose}
     >
       <div
         ref={dialogRef}
-        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl bg-white p-6 shadow-lg"
+        className="sheet-in max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-6 shadow-lg sm:rounded-xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between">

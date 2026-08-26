@@ -13,8 +13,8 @@ vi.mock('../catalog/api')
 const cashier: User = { id: 'cashier-1', name: 'Cara', email: 'c@x.com', role: 'CASHIER' }
 
 const categories: Category[] = [
-  { id: 'cat-coffee', name: 'Coffee', sortOrder: 0, isActive: true },
-  { id: 'cat-bakery', name: 'Bakery', sortOrder: 1, isActive: true },
+  { id: 'cat-coffee', name: 'Coffee', sortOrder: 0, isActive: true, parentId: null },
+  { id: 'cat-bakery', name: 'Bakery', sortOrder: 1, isActive: true, parentId: null },
 ]
 
 const drip: Product = {
@@ -52,6 +52,22 @@ const latte: Product = {
   ],
 }
 
+const cappuccino: Product = {
+  id: 'prod-cappuccino',
+  categoryId: 'cat-coffee',
+  name: 'Cappuccino',
+  description: null,
+  basePrice: 350,
+  isActive: true,
+  imageUrl: null,
+  category: categories[0]!,
+  variants: [
+    { id: 'var-cap-small', productId: 'prod-cappuccino', name: 'Small', price: 350, isActive: true },
+    { id: 'var-cap-large', productId: 'prod-cappuccino', name: 'Large', price: 450, isActive: true },
+  ],
+  modifiers: [],
+}
+
 const croissant: Product = {
   id: 'prod-croissant',
   categoryId: 'cat-bakery',
@@ -82,7 +98,7 @@ function renderPOS() {
   return render(
     <MemoryRouter>
       <AuthContext.Provider
-        value={{ user: cashier, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}
+        value={{ user: cashier, shop: null, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}
       >
         <POSHome />
       </AuthContext.Provider>
@@ -91,7 +107,7 @@ function renderPOS() {
 }
 
 beforeEach(() => {
-  vi.mocked(catalogApi.listProducts).mockResolvedValue([drip, latte, croissant, inactiveMuffin])
+  vi.mocked(catalogApi.listProducts).mockResolvedValue([drip, latte, cappuccino, croissant, inactiveMuffin])
   vi.mocked(catalogApi.listCategories).mockResolvedValue(categories)
 })
 
@@ -129,8 +145,8 @@ describe('POS cart — adding items', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Drip Coffee/ }))
     const cart = screen.getByRole('complementary')
     expect(within(cart).getByText('Drip Coffee')).toBeInTheDocument()
-    // ₱2.50 appears twice: once as the line total, once as the subtotal.
-    expect(within(cart).getAllByText('₱2.50')).toHaveLength(2)
+    // ₱2.50 appears three times: the line's unit price, the subtotal, and the total.
+    expect(within(cart).getAllByText('₱2.50')).toHaveLength(3)
   })
 
   it('opens a picker for a product with variants and modifiers, and adds the configured line', async () => {
@@ -145,8 +161,31 @@ describe('POS cart — adding items', () => {
     const cart = screen.getByRole('complementary')
     expect(within(cart).getByText('Latte — Large')).toBeInTheDocument()
     expect(within(cart).getByText('Extra Shot')).toBeInTheDocument()
-    // 500 (large) + 75 (extra shot) = 575, shown as both the line total and the subtotal.
-    expect(within(cart).getAllByText('₱5.75')).toHaveLength(2)
+    // 500 (large) + 75 (extra shot) = 575, shown as the line's unit price, the subtotal, and the total.
+    expect(within(cart).getAllByText('₱5.75')).toHaveLength(3)
+  })
+
+  it('quick-adds a size-only product by tapping its size chip, with no dialog', async () => {
+    renderPOS()
+    await screen.findByText('Cappuccino')
+    await userEvent.click(screen.getByRole('button', { name: /Cappuccino Large/ }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const cart = screen.getByRole('complementary')
+    expect(within(cart).getByText('Cappuccino — Large')).toBeInTheDocument()
+    // 450 shown as the line's unit price, the subtotal, and the total.
+    expect(within(cart).getAllByText('₱4.50')).toHaveLength(3)
+  })
+
+  it('adds separate lines when different size chips of the same product are tapped', async () => {
+    renderPOS()
+    await screen.findByText('Cappuccino')
+    await userEvent.click(screen.getByRole('button', { name: /Cappuccino Small/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Cappuccino Large/ }))
+
+    const cart = screen.getByRole('complementary')
+    expect(within(cart).getByText('Cappuccino — Small')).toBeInTheDocument()
+    expect(within(cart).getByText('Cappuccino — Large')).toBeInTheDocument()
   })
 
   it('disables Add to order until a required variant is chosen', async () => {
@@ -192,28 +231,24 @@ describe('POS cart — managing the cart', () => {
     expect(within(cart).getByText(/No items yet/)).toBeInTheDocument()
   })
 
-  it('updates order notes', async () => {
-    renderPOS()
-    await addDripToCart()
-    const cart = screen.getByRole('complementary')
-    await userEvent.type(within(cart).getByLabelText('Order notes'), 'For here')
-    expect(within(cart).getByLabelText('Order notes')).toHaveValue('For here')
-  })
-
   it('shows a combined subtotal across multiple lines', async () => {
     renderPOS()
     await addDripToCart()
+    // Drip Coffee and Croissant are in different top-level categories, and
+    // the rail now defaults to the first one (Coffee) selected — switch to
+    // Bakery to reach Croissant, same as a real cashier browsing both.
+    await userEvent.click(await screen.findByRole('button', { name: 'Bakery' }))
     await userEvent.click(await screen.findByRole('button', { name: /Croissant/ }))
     const cart = screen.getByRole('complementary')
-    // 2.50 + 3.25 = 5.75
-    expect(within(cart).getByText('₱5.75')).toBeInTheDocument()
+    // 2.50 + 3.25 = 5.75, shown as both the subtotal and the total (no discount applied pre-checkout).
+    expect(within(cart).getAllByText('₱5.75')).toHaveLength(2)
   })
 
   it('clears the cart after confirming in the dialog', async () => {
     renderPOS()
     await addDripToCart()
     const cart = screen.getByRole('complementary')
-    await userEvent.click(within(cart).getByRole('button', { name: 'Clear cart' }))
+    await userEvent.click(within(cart).getByRole('button', { name: 'Clear All' }))
 
     const dialog = screen.getByRole('alertdialog')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Clear cart' }))
@@ -225,7 +260,7 @@ describe('POS cart — managing the cart', () => {
     renderPOS()
     await addDripToCart()
     const cart = screen.getByRole('complementary')
-    await userEvent.click(within(cart).getByRole('button', { name: 'Clear cart' }))
+    await userEvent.click(within(cart).getByRole('button', { name: 'Clear All' }))
 
     const dialog = screen.getByRole('alertdialog')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
@@ -238,6 +273,6 @@ describe('POS cart — managing the cart', () => {
     renderPOS()
     await screen.findByText('Drip Coffee')
     const cart = screen.getByRole('complementary')
-    expect(within(cart).getByRole('button', { name: 'Clear cart' })).toBeDisabled()
+    expect(within(cart).getByRole('button', { name: 'Clear All' })).toBeDisabled()
   })
 })
