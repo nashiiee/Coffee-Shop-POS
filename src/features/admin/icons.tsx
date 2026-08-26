@@ -43,6 +43,117 @@ export function CupIcon({ className }: IconProps) {
   )
 }
 
+// Category-specific icon set, matching CupIcon's line style — used to give
+// each catalog category (Coffee, Bakery, Tea, Juice, Dessert, Snack, Meal)
+// a distinct glyph instead of one generic folder shape for all of them.
+export function BreadIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M4 16c0-5.5 3.6-10 8-10s8 4.5 8 10c-2.2-1.4-5-2-8-2s-5.8.6-8 2Z" />
+      <path d="M8.5 12.5v2.5M12 11.5v3.5M15.5 12.5v2.5" />
+    </svg>
+  )
+}
+
+export function TeaIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M12 3.5c-3.5 2-6 5.7-6 9.5a6 6 0 0 0 12 0c0-3.8-2.5-7.5-6-9.5Z" />
+      <path d="M12 8v9" />
+    </svg>
+  )
+}
+
+export function JuiceIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M7 4h10l-1.3 14.3a2 2 0 0 1-2 1.8h-3.4a2 2 0 0 1-2-1.8z" />
+      <path d="M6.5 8.5h11" />
+      <path d="M15.5 3 17.5 6" />
+    </svg>
+  )
+}
+
+export function DessertIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M6.5 12h11l-1.3 6.3a2 2 0 0 1-2 1.7H9.8a2 2 0 0 1-2-1.7Z" />
+      <path d="M8 12c0-3 1.8-5 4-5s4 2 4 5" />
+      <circle cx="12" cy="5" r="1.1" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+export function SnackIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="9.5" cy="10" r=".9" fill="currentColor" stroke="none" />
+      <circle cx="14.5" cy="9.5" r=".9" fill="currentColor" stroke="none" />
+      <circle cx="13.5" cy="14" r=".9" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="14.5" r=".9" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+export function MealIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M6.5 3v5.5a1.5 1.5 0 0 0 3 0V3M8 8.5V21" />
+      <path d="M16.5 3c-1.7 0-2.8 1.8-2.8 4.5S14.8 12 16.5 12M16.5 3v18" />
+    </svg>
+  )
+}
+
+export function CaffeineFreeIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M5 19c8-1 14-7 15-15-8 1-14 7-15 15Z" />
+      <path d="M7 17c4-4 8-8 12-12" />
+    </svg>
+  )
+}
+
+export function FrappuccinoIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M7.5 8h9l-1 9.7a2 2 0 0 1-2 1.8h-3a2 2 0 0 1-2-1.8Z" />
+      <path d="M6.5 8h11" />
+      <path d="M13 8V3.5" />
+      <path d="M9.3 11.5h5.4M9.6 14.5h4.8" />
+    </svg>
+  )
+}
+
+export function MilkshakeIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M8 8.5h8l-.9 9.2a2 2 0 0 1-2 1.8h-2.2a2 2 0 0 1-2-1.8Z" />
+      <path d="M7 8.5h10" />
+      <path d="M15 8.5c.8-1.6.3-3.2-1-4.3" />
+      <circle cx="14" cy="4" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+export function RefresherIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M12 3.5c3.2 4.3 6 8.3 6 11.8a6 6 0 0 1-12 0c0-3.5 2.8-7.5 6-11.8Z" />
+      <path d="M9 15.3c0 1.5 1.2 2.7 2.7 2.7" />
+    </svg>
+  )
+}
+
+export function PastryIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M16.5 4a8.2 8.2 0 1 0 0 16 6.6 6.6 0 0 1 0-16Z" />
+      <path d="M9.5 9.8c.5.6.5 1.3 0 1.9M12.8 8.6c.5.6.5 1.3 0 1.9" />
+    </svg>
+  )
+}
+
 export function ModifierIcon({ className }: IconProps) {
   return (
     <svg {...base} className={className}>
