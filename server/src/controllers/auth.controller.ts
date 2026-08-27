@@ -9,8 +9,13 @@ const REFRESH_COOKIE = 'refreshToken'
 function setRefreshCookie(res: Response, token: string) {
   res.cookie(REFRESH_COOKIE, token, {
     httpOnly: true,
+    // The frontend and API are served from different origins in production
+    // (e.g. a Vercel domain calling a Render domain) — SameSite=Lax cookies
+    // are never sent on cross-site fetch requests, only top-level
+    // navigations, which would silently break refresh. None requires
+    // Secure, which is already tied to production (HTTPS).
     secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
     path: '/api/auth',
   })
 }
