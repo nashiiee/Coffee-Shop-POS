@@ -4,7 +4,7 @@ import type { CreateModifierInput, UpdateModifierInput } from '../schemas/modifi
 
 export async function listModifiersHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const modifiers = await modifierService.listModifiers(req.query.activeOnly === 'true')
+    const modifiers = await modifierService.listModifiers(req.query.activeOnly === 'true', req.user!.role, req.user!.shopId)
     res.status(200).json(modifiers)
   } catch (err) {
     next(err)
@@ -13,7 +13,7 @@ export async function listModifiersHandler(req: Request, res: Response, next: Ne
 
 export async function createModifierHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const modifier = await modifierService.createModifier(req.body as CreateModifierInput)
+    const modifier = await modifierService.createModifier(req.body as CreateModifierInput, req.user!.shopId)
     res.status(201).json(modifier)
   } catch (err) {
     next(err)
@@ -22,7 +22,12 @@ export async function createModifierHandler(req: Request, res: Response, next: N
 
 export async function updateModifierHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const modifier = await modifierService.updateModifier(req.params.id as string, req.body as UpdateModifierInput, req.user!.id)
+    const modifier = await modifierService.updateModifier(
+      req.params.id as string,
+      req.body as UpdateModifierInput,
+      req.user!.id,
+      req.user!.shopId,
+    )
     res.status(200).json(modifier)
   } catch (err) {
     next(err)

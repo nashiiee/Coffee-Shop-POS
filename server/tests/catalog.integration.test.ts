@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import request from 'supertest'
+import { Prisma } from '@prisma/client'
+
+function makeP2002(): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed on the fields: (`name`)', {
+    code: 'P2002',
+    clientVersion: 'test',
+  })
+}
 
 const categoryFindMany = vi.fn()
 const categoryFindFirst = vi.fn()
@@ -24,8 +32,10 @@ const productModifierDeleteMany = vi.fn()
 const productModifierCreateMany = vi.fn()
 const userFindUnique = vi.fn()
 const auditLogCreate = vi.fn()
+const shopFindUnique = vi.fn()
 
 const mockPrisma = {
+  shop: { findUnique: shopFindUnique },
   category: {
     findMany: categoryFindMany,
     findFirst: categoryFindFirst,
@@ -62,8 +72,8 @@ const { createApp } = await import('../src/app.js')
 const { signAccessToken } = await import('../src/lib/jwt.js')
 
 const app = createApp()
-const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN' })
-const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER' })
+const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN', shopId: 'shop-1' })
+const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER', shopId: 'shop-1' })
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -74,6 +84,7 @@ beforeEach(() => {
   categoryFindUnique.mockResolvedValue({ id: 'cat-1', name: 'Coffee', sortOrder: 0, isActive: true })
   modifierFindUnique.mockResolvedValue({ id: 'mod-1', name: 'Extra Shot', price: 75, isActive: true })
   userFindUnique.mockResolvedValue({ name: 'Admin' })
+  shopFindUnique.mockResolvedValue({ subscriptionStatus: 'ACTIVE' })
   mockPrisma.$transaction.mockImplementation((arg: unknown) =>
     typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(mockPrisma) : Promise.all(arg as Promise<unknown>[]),
   )
@@ -87,6 +98,23 @@ describe('Categories API', () => {
     expect(res.body).toHaveLength(1)
   })
 
+  it('forces the active-only filter for a cashier even when activeOnly is omitted from the query', async () => {
+    // The POS screen calls GET /api/categories with no query params at all —
+    // without server-side role enforcement, a cashier would see every
+    // deactivated category too (mirrors listDiscounts's cashier override).
+    categoryFindMany.mockResolvedValue([])
+    await request(app).get('/api/categories').set('Authorization', `Bearer ${cashierToken}`)
+    expect(categoryFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ isActive: true }) }),
+    )
+  })
+
+  it('lets an admin see the full unfiltered category list when activeOnly is omitted', async () => {
+    categoryFindMany.mockResolvedValue([])
+    await request(app).get('/api/categories').set('Authorization', `Bearer ${adminToken}`)
+    expect(categoryFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { shopId: 'shop-1' } }))
+  })
+
   it('allows an admin to create a category', async () => {
     categoryCreate.mockResolvedValue({ id: 'cat-1', name: 'Coffee', sortOrder: 0, isActive: true })
     const res = await request(app)
@@ -95,7 +123,9 @@ describe('Categories API', () => {
       .send({ name: 'Coffee' })
     expect(res.status).toBe(201)
     expect(res.body.name).toBe('Coffee')
-    expect(categoryCreate).toHaveBeenCalledWith({ data: { name: 'Coffee', sortOrder: 0 } })
+    expect(categoryCreate).toHaveBeenCalledWith({
+      data: { name: 'Coffee', sortOrder: 0, parentId: null, shopId: 'shop-1' },
+    })
   })
 
   it('blocks a cashier from creating a category', async () => {
@@ -122,6 +152,33 @@ describe('Categories API', () => {
     expect(categoryCreate).not.toHaveBeenCalled()
   })
 
+  it('returns 409 (not a raw 500) when a concurrent request wins the same-name race past the app-level check', async () => {
+    // categoryFindFirst passed (no matching row found yet), but by the time
+    // this request's own create() runs, a concurrent request has already
+    // committed a category with the same name — the DB's partial unique
+    // index rejects it.
+    categoryFindFirst.mockResolvedValue(null)
+    categoryCreate.mockRejectedValue(makeP2002())
+    const res = await request(app)
+      .post('/api/categories')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Racing Category' })
+    expect(res.status).toBe(409)
+  })
+
+  it('rejects reactivating a category whose name now collides with a different active category', async () => {
+    // An isActive-only patch never touches `name`, so assertNameAvailable
+    // never runs for it — the DB's partial unique index is the only thing
+    // that catches this collision.
+    categoryFindUnique.mockResolvedValue({ id: 'cat-old', name: 'Coffee', sortOrder: 0, isActive: false })
+    categoryUpdate.mockRejectedValue(makeP2002())
+    const res = await request(app)
+      .patch('/api/categories/cat-old')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isActive: true })
+    expect(res.status).toBe(409)
+  })
+
   it('allows an admin to deactivate a category', async () => {
     categoryUpdate.mockResolvedValue({ id: 'cat-1', name: 'Coffee', sortOrder: 0, isActive: false })
     const res = await request(app)
@@ -130,7 +187,7 @@ describe('Categories API', () => {
       .send({ isActive: false })
     expect(res.status).toBe(200)
     expect(res.body.isActive).toBe(false)
-    expect(categoryUpdate).toHaveBeenCalledWith({ where: { id: 'cat-1' }, data: { isActive: false } })
+    expect(categoryUpdate).toHaveBeenCalledWith({ where: { id: 'cat-1', shopId: 'shop-1' }, data: { isActive: false } })
   })
 
   it('blocks a cashier from updating a category', async () => {
@@ -168,6 +225,23 @@ describe('Products API', () => {
     expect(res.body[0].name).toBe('Latte')
   })
 
+  it('forces the active-only filter for a cashier even when activeOnly is omitted from the query', async () => {
+    // The POS screen calls GET /api/products with no query params at all —
+    // without server-side role enforcement, a cashier would see every
+    // deactivated product too (mirrors listDiscounts's cashier override).
+    productFindMany.mockResolvedValue([])
+    await request(app).get('/api/products').set('Authorization', `Bearer ${cashierToken}`)
+    expect(productFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ isActive: true }) }),
+    )
+  })
+
+  it('lets an admin see the full unfiltered product list when activeOnly is omitted', async () => {
+    productFindMany.mockResolvedValue([])
+    await request(app).get('/api/products').set('Authorization', `Bearer ${adminToken}`)
+    expect(productFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { shopId: 'shop-1' } }))
+  })
+
   it('allows an admin to create a product', async () => {
     productCreate.mockResolvedValue({ id: 'prod-1' })
     productFindUnique.mockResolvedValue(fullProduct)
@@ -178,7 +252,7 @@ describe('Products API', () => {
     expect(res.status).toBe(201)
     expect(res.body.name).toBe('Latte')
     expect(productCreate).toHaveBeenCalledWith({
-      data: { categoryId: 'cat-1', name: 'Latte', basePrice: 450, inventory: { create: {} } },
+      data: { categoryId: 'cat-1', name: 'Latte', basePrice: 450, shopId: 'shop-1', inventory: { create: {} } },
     })
   })
 
@@ -210,7 +284,7 @@ describe('Products API', () => {
     expect(res.body.basePrice).toBe(500)
     expect(res.body.isActive).toBe(false)
     expect(productUpdate).toHaveBeenCalledWith({
-      where: { id: 'prod-1' },
+      where: { id: 'prod-1', shopId: 'shop-1' },
       data: { basePrice: 500, isActive: false },
     })
   })
@@ -267,6 +341,27 @@ describe('Product variants API', () => {
     expect(variantCreate).not.toHaveBeenCalled()
   })
 
+  it('returns 409 (not a raw 500) when a concurrent request wins the same-name race past the app-level check', async () => {
+    productFindUnique.mockResolvedValue({ id: 'prod-1' })
+    variantFindFirst.mockResolvedValue(null)
+    variantCreate.mockRejectedValue(makeP2002())
+    const res = await request(app)
+      .post('/api/products/prod-1/variants')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Racing Size', price: 550 })
+    expect(res.status).toBe(409)
+  })
+
+  it('rejects reactivating a variant whose name now collides with a different active variant on the same product', async () => {
+    variantFindUnique.mockResolvedValue({ id: 'var-old', productId: 'prod-1', name: 'Large', isActive: false })
+    variantUpdate.mockRejectedValue(makeP2002())
+    const res = await request(app)
+      .patch('/api/products/prod-1/variants/var-old')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isActive: true })
+    expect(res.status).toBe(409)
+  })
+
   it('allows an admin to update a variant', async () => {
     variantFindUnique.mockResolvedValue({ id: 'var-1', productId: 'prod-1', name: 'Large', price: 550, isActive: true })
     variantUpdate.mockResolvedValue({ id: 'var-1', productId: 'prod-1', name: 'Large', price: 600, isActive: true })
@@ -290,6 +385,31 @@ describe('Product variants API', () => {
 })
 
 describe('Modifiers API', () => {
+  it('allows a cashier to list modifiers', async () => {
+    modifierFindMany.mockResolvedValue([{ id: 'mod-1', name: 'Extra Shot', price: 75, isActive: true }])
+    const res = await request(app).get('/api/modifiers').set('Authorization', `Bearer ${cashierToken}`)
+    expect(res.status).toBe(200)
+    expect(res.body).toHaveLength(1)
+  })
+
+  it('forces the active-only filter for a cashier even when activeOnly is omitted from the query', async () => {
+    // The POS screen's ProductPicker calls GET /api/modifiers with no query
+    // params at all — without server-side role enforcement, a cashier would
+    // see every deactivated modifier too (mirrors listDiscounts's cashier
+    // override).
+    modifierFindMany.mockResolvedValue([])
+    await request(app).get('/api/modifiers').set('Authorization', `Bearer ${cashierToken}`)
+    expect(modifierFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ isActive: true }) }),
+    )
+  })
+
+  it('lets an admin see the full unfiltered modifier list when activeOnly is omitted', async () => {
+    modifierFindMany.mockResolvedValue([])
+    await request(app).get('/api/modifiers').set('Authorization', `Bearer ${adminToken}`)
+    expect(modifierFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { shopId: 'shop-1' } }))
+  })
+
   it('allows an admin to create a modifier', async () => {
     modifierCreate.mockResolvedValue({ id: 'mod-1', name: 'Extra Shot', price: 75, isActive: true })
     const res = await request(app)
@@ -297,7 +417,7 @@ describe('Modifiers API', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ name: 'Extra Shot', price: 75 })
     expect(res.status).toBe(201)
-    expect(modifierCreate).toHaveBeenCalledWith({ data: { name: 'Extra Shot', price: 75 } })
+    expect(modifierCreate).toHaveBeenCalledWith({ data: { name: 'Extra Shot', price: 75, shopId: 'shop-1' } })
   })
 
   it('blocks a cashier from creating a modifier', async () => {
@@ -309,6 +429,36 @@ describe('Modifiers API', () => {
     expect(modifierCreate).not.toHaveBeenCalled()
   })
 
+  it('rejects creating a modifier whose name collides with an active one', async () => {
+    modifierFindFirst.mockResolvedValue({ id: 'mod-existing', name: 'Extra Shot', price: 75, isActive: true })
+    const res = await request(app)
+      .post('/api/modifiers')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Extra Shot', price: 75 })
+    expect(res.status).toBe(409)
+    expect(modifierCreate).not.toHaveBeenCalled()
+  })
+
+  it('returns 409 (not a raw 500) when a concurrent request wins the same-name race past the app-level check', async () => {
+    modifierFindFirst.mockResolvedValue(null)
+    modifierCreate.mockRejectedValue(makeP2002())
+    const res = await request(app)
+      .post('/api/modifiers')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Racing Modifier', price: 75 })
+    expect(res.status).toBe(409)
+  })
+
+  it('rejects reactivating a modifier whose name now collides with a different active modifier', async () => {
+    modifierFindUnique.mockResolvedValue({ id: 'mod-old', name: 'Extra Shot', price: 75, isActive: false })
+    modifierUpdate.mockRejectedValue(makeP2002())
+    const res = await request(app)
+      .patch('/api/modifiers/mod-old')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isActive: true })
+    expect(res.status).toBe(409)
+  })
+
   it('allows an admin to update a modifier', async () => {
     modifierUpdate.mockResolvedValue({ id: 'mod-1', name: 'Extra Shot', price: 100, isActive: true })
     const res = await request(app)
@@ -317,7 +467,7 @@ describe('Modifiers API', () => {
       .send({ price: 100 })
     expect(res.status).toBe(200)
     expect(res.body.price).toBe(100)
-    expect(modifierUpdate).toHaveBeenCalledWith({ where: { id: 'mod-1' }, data: { price: 100 } })
+    expect(modifierUpdate).toHaveBeenCalledWith({ where: { id: 'mod-1', shopId: 'shop-1' }, data: { price: 100 } })
   })
 
   it('blocks a cashier from updating a modifier', async () => {

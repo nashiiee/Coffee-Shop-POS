@@ -7,6 +7,7 @@ const productVariantDeleteMany = vi.fn()
 const inventoryTransactionDeleteMany = vi.fn()
 const inventoryItemDeleteMany = vi.fn()
 const productDelete = vi.fn()
+const shopFindUnique = vi.fn()
 
 const txClient = {
   productVariant: { deleteMany: productVariantDeleteMany },
@@ -18,6 +19,7 @@ const txClient = {
 const mockPrisma = {
   product: { findUnique: productFindUnique },
   orderItem: { count: orderItemCount },
+  shop: { findUnique: shopFindUnique },
   $transaction: vi.fn(async (callback: (tx: typeof txClient) => unknown) => callback(txClient)),
 }
 
@@ -27,8 +29,8 @@ const { createApp } = await import('../src/app.js')
 const { signAccessToken } = await import('../src/lib/jwt.js')
 
 const app = createApp()
-const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN' })
-const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER' })
+const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN', shopId: 'shop-1' })
+const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER', shopId: 'shop-1' })
 
 const existingProduct = { id: 'prod-1', name: 'Typo Latte', isActive: true }
 
@@ -36,6 +38,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   productFindUnique.mockResolvedValue(existingProduct)
   orderItemCount.mockResolvedValue(0)
+  shopFindUnique.mockResolvedValue({ subscriptionStatus: 'ACTIVE' })
 })
 
 describe('DELETE /api/products/:id — authorization', () => {
@@ -70,6 +73,6 @@ describe('DELETE /api/products/:id — behavior', () => {
     expect(productVariantDeleteMany).toHaveBeenCalledWith({ where: { productId: 'prod-1' } })
     expect(inventoryTransactionDeleteMany).toHaveBeenCalledWith({ where: { inventoryItem: { productId: 'prod-1' } } })
     expect(inventoryItemDeleteMany).toHaveBeenCalledWith({ where: { productId: 'prod-1' } })
-    expect(productDelete).toHaveBeenCalledWith({ where: { id: 'prod-1' } })
+    expect(productDelete).toHaveBeenCalledWith({ where: { id: 'prod-1', shopId: 'shop-1' } })
   })
 })

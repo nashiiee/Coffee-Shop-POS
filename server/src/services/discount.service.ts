@@ -17,7 +17,7 @@ function isActiveNameConflict(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
 }
 
-export function listDiscounts(activeOnly: boolean, actingRole: Role) {
+export function listDiscounts(activeOnly: boolean, actingRole: Role, shopId: string) {
   // A CASHIER can only ever see currently-usable discounts, regardless of
   // what activeOnly value the request supplies — the query param is a
   // client-controlled convenience for the ADMIN management UI, not an
@@ -26,31 +26,35 @@ export function listDiscounts(activeOnly: boolean, actingRole: Role) {
   // every inactive/expired/future-dated discount in the system.
   const effectiveActiveOnly = actingRole === 'CASHIER' ? true : activeOnly
   return prisma.discount.findMany({
-    // activeOnly backs the cashier-facing checkout dropdown — a discount
-    // that's still marked isActive but has already expired must not be
-    // offered as a choice, even though checkout would reject it anyway if
-    // one were somehow selected.
-    ...(effectiveActiveOnly
-      ? { where: { isActive: true, OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }] } }
-      : {}),
+    where: {
+      shopId,
+      // activeOnly backs the cashier-facing checkout dropdown — a discount
+      // that's still marked isActive but has already expired must not be
+      // offered as a choice, even though checkout would reject it anyway if
+      // one were somehow selected.
+      ...(effectiveActiveOnly
+        ? { isActive: true, OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }] }
+        : {}),
+    },
     orderBy: { name: 'asc' },
   })
 }
 
-async function assertNameAvailable(name: string, excludeId?: string): Promise<void> {
+async function assertNameAvailable(name: string, shopId: string, excludeId?: string): Promise<void> {
   const existing = await prisma.discount.findFirst({
-    where: { name, isActive: true, ...(excludeId ? { id: { not: excludeId } } : {}) },
+    where: { name, shopId, isActive: true, ...(excludeId ? { id: { not: excludeId } } : {}) },
   })
   if (existing) {
     throw AppError.conflict(`An active discount named "${name}" already exists`)
   }
 }
 
-export async function createDiscount(data: CreateDiscountInput, actorId: string) {
-  await assertNameAvailable(data.name)
+export async function createDiscount(data: CreateDiscountInput, actorId: string, shopId: string) {
+  await assertNameAvailable(data.name, shopId)
   try {
-    const created = await prisma.discount.create({ data: omitUndefined(data) })
+    const created = await prisma.discount.create({ data: { ...omitUndefined(data), shopId } })
     await recordAudit({
+      shopId,
       actorId,
       action: 'DISCOUNT_CREATED',
       resource: 'Discount',
@@ -66,9 +70,9 @@ export async function createDiscount(data: CreateDiscountInput, actorId: string)
   }
 }
 
-export async function updateDiscount(id: string, data: UpdateDiscountInput, actorId: string) {
+export async function updateDiscount(id: string, data: UpdateDiscountInput, actorId: string, shopId: string) {
   if (data.name) {
-    await assertNameAvailable(data.name, id)
+    await assertNameAvailable(data.name, shopId, id)
   }
 
   // The schema's own refine() only validates value<=100 when BOTH `type`
@@ -76,7 +80,7 @@ export async function updateDiscount(id: string, data: UpdateDiscountInput, acto
   // existing PERCENTAGE discount would skip that check entirely. Re-check
   // against the MERGED (existing + patch) state here, since that's what
   // actually ends up persisted and later feeds checkout's discount math.
-  const current = await prisma.discount.findUnique({ where: { id } })
+  const current = await prisma.discount.findUnique({ where: { id, shopId } })
   if (!current) {
     throw AppError.notFound('Discount not found')
   }
@@ -88,10 +92,11 @@ export async function updateDiscount(id: string, data: UpdateDiscountInput, acto
 
   try {
     const changes = omitUndefined(data)
-    const updated = await prisma.discount.update({ where: { id }, data: changes })
+    const updated = await prisma.discount.update({ where: { id, shopId }, data: changes })
     const changedFields = Object.keys(changes) as (keyof typeof changes)[]
     if (changedFields.length > 0) {
       await recordAudit({
+        shopId,
         actorId,
         action: 'DISCOUNT_UPDATED',
         resource: 'Discount',

@@ -4,7 +4,9 @@ import type { CreateDiscountInput, UpdateDiscountInput } from '../schemas/discou
 
 export async function listDiscountsHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    res.status(200).json(await discountService.listDiscounts(req.query.activeOnly === 'true', req.user!.role))
+    res
+      .status(200)
+      .json(await discountService.listDiscounts(req.query.activeOnly === 'true', req.user!.role, req.user!.shopId))
   } catch (err) {
     next(err)
   }
@@ -12,7 +14,7 @@ export async function listDiscountsHandler(req: Request, res: Response, next: Ne
 
 export async function createDiscountHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const discount = await discountService.createDiscount(req.body as CreateDiscountInput, req.user!.id)
+    const discount = await discountService.createDiscount(req.body as CreateDiscountInput, req.user!.id, req.user!.shopId)
     res.status(201).json(discount)
   } catch (err) {
     next(err)
@@ -21,7 +23,12 @@ export async function createDiscountHandler(req: Request, res: Response, next: N
 
 export async function updateDiscountHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const discount = await discountService.updateDiscount(req.params.id as string, req.body as UpdateDiscountInput, req.user!.id)
+    const discount = await discountService.updateDiscount(
+      req.params.id as string,
+      req.body as UpdateDiscountInput,
+      req.user!.id,
+      req.user!.shopId,
+    )
     res.status(200).json(discount)
   } catch (err) {
     next(err)

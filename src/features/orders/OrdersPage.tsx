@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { useAuth } from '../auth/useAuth'
 import { ApiError } from '../../lib/apiClient'
 import { formatCents, formatOrderNumber } from '../../lib/money'
+import { dateStampedFilename, exportCsv } from '../../lib/csv'
 import * as ordersApi from './api'
 import * as dashboardApi from '../dashboard/api'
 import { StatTile } from '../admin/StatTile'
@@ -44,25 +45,34 @@ function statusPillClass(status: string): string {
   return STATUS_PILL_CLASSES[status] ?? 'bg-stone-100 text-stone-600'
 }
 
-function downloadCsv(orders: OrderListItem[]) {
-  const header = ['Order #', 'Date', 'Cashier', 'Items', 'Payment', 'Total', 'Status']
+const EXPORT_PAGE_SIZE = 100 // matches the server's max pageSize (see order.schema.ts)
+
+// Exports every order matching the current filters, not just the page
+// currently on screen — the server caps pageSize at 100, so this pages
+// through as many requests as needed and concatenates the results.
+async function fetchAllOrders(accessToken: string | null, filters: OrderFilters): Promise<OrderListItem[]> {
+  const first = await ordersApi.listOrders(accessToken, { ...filters, page: 1, pageSize: EXPORT_PAGE_SIZE })
+  const orders = [...first.orders]
+  const totalPages = Math.ceil(first.total / EXPORT_PAGE_SIZE)
+  for (let page = 2; page <= totalPages; page++) {
+    const next = await ordersApi.listOrders(accessToken, { ...filters, page, pageSize: EXPORT_PAGE_SIZE })
+    orders.push(...next.orders)
+  }
+  return orders
+}
+
+function downloadOrdersCsv(orders: OrderListItem[]) {
+  const headers = ['Order #', 'Date', 'Cashier', 'Items', 'Payment', 'Total', 'Status']
   const rows = orders.map((o) => [
     formatOrderNumber(o.sequenceNumber),
     new Date(o.createdAt).toLocaleString(),
     o.cashier.name,
-    String(o._count.items),
+    o._count.items,
     o.payment?.method ?? '',
     formatCents(o.total),
     o.status,
   ])
-  const csv = [header, ...rows].map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `orders-${new Date().toISOString().slice(0, 10)}.csv`
-  link.click()
-  URL.revokeObjectURL(url)
+  exportCsv(dateStampedFilename('orders'), headers, rows)
 }
 
 // Simple windowed page-number list: first, last, current +/-1, with "…" gaps.
@@ -101,6 +111,8 @@ export function OrdersPage({ basePath = '/orders' }: OrdersPageProps) {
   const [stats, setStats] = useState<DashboardData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isExporting, setIsExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -159,6 +171,19 @@ export function OrdersPage({ basePath = '/orders' }: OrdersPageProps) {
 
   function goToPage(page: number) {
     setFilters((prev) => ({ ...prev, page }))
+  }
+
+  async function handleExport() {
+    setIsExporting(true)
+    setExportError(null)
+    try {
+      const orders = await fetchAllOrders(accessToken, filters)
+      downloadOrdersCsv(orders)
+    } catch (err: unknown) {
+      setExportError(err instanceof ApiError ? err.message : 'Failed to export orders')
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   const totalPages = result ? Math.max(1, Math.ceil(result.total / result.pageSize)) : 1
@@ -320,12 +345,12 @@ export function OrdersPage({ basePath = '/orders' }: OrdersPageProps) {
               ) : null}
               <button
                 type="button"
-                onClick={() => result && downloadCsv(result.orders)}
-                disabled={!result || result.orders.length === 0}
+                onClick={handleExport}
+                disabled={!result || result.total === 0 || isExporting}
                 className="flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-40"
               >
                 <DownloadIcon />
-                Export
+                {isExporting ? 'Exporting…' : 'Export CSV'}
               </button>
             </div>
           </div>
@@ -356,6 +381,12 @@ export function OrdersPage({ basePath = '/orders' }: OrdersPageProps) {
       {error ? (
         <p role="alert" className="text-red-600">
           {error}
+        </p>
+      ) : null}
+
+      {exportError ? (
+        <p role="alert" className="text-red-600">
+          {exportError}
         </p>
       ) : null}
 

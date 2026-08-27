@@ -7,9 +7,10 @@ export type CartAction =
   | { type: 'DECREMENT'; lineId: string }
   | { type: 'REMOVE_ITEM'; lineId: string }
   | { type: 'SET_NOTES'; notes: string }
+  | { type: 'SET_DISCOUNT'; discountId: string | null }
   | { type: 'RESET' }
 
-export const initialCartState: CartState = { items: [], notes: '' }
+export const initialCartState: CartState = { items: [], notes: '', discountId: null }
 
 function modifierSignature(modifiers: { modifierId: string }[]): string {
   return modifiers
@@ -84,6 +85,8 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
       return { ...state, items: state.items.filter((item) => item.id !== action.lineId) }
     case 'SET_NOTES':
       return { ...state, notes: action.notes }
+    case 'SET_DISCOUNT':
+      return { ...state, discountId: action.discountId }
     case 'RESET':
       return initialCartState
     default:

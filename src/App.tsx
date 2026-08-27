@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes } from 'react-router'
+import { BrowserRouter, Link, Route, Routes } from 'react-router'
 import { AuthProvider } from './features/auth/AuthProvider'
 import { LoginPage } from './features/auth/LoginPage'
 import { AdminLayout } from './features/admin/AdminLayout'
@@ -69,6 +69,9 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={['ADMIN', 'CASHIER']}>
                 <div className="mx-auto max-w-4xl px-6 py-8">
+                  <Link to="/pos" className="mb-4 inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-800">
+                    ← Back to POS
+                  </Link>
                   <OrdersPage />
                 </div>
               </ProtectedRoute>
@@ -79,6 +82,9 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={['ADMIN', 'CASHIER']}>
                 <div className="mx-auto max-w-4xl px-6 py-8">
+                  <Link to="/pos" className="mb-4 inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-800">
+                    ← Back to POS
+                  </Link>
                   <OrderDetailPage />
                 </div>
               </ProtectedRoute>

@@ -31,7 +31,7 @@ function percentChange(current: number, previous: number): number | null {
   return ((current - previous) / previous) * 100
 }
 
-export async function getDashboard(now: Date = new Date()) {
+export async function getDashboard(shopId: string, now: Date = new Date()) {
   const { start: todayStart, end: todayEnd } = shopDayRange(now)
   const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000)
   const productsWindowStart = new Date(todayEnd.getTime() - TOP_PRODUCTS_WINDOW_DAYS * 24 * 60 * 60 * 1000)
@@ -52,43 +52,59 @@ export async function getDashboard(now: Date = new Date()) {
     hourRows,
   ] = await Promise.all([
     prisma.order.aggregate({
-      where: { status: 'COMPLETED', createdAt: { gte: todayStart, lt: todayEnd } },
+      where: { shopId, status: 'COMPLETED', createdAt: { gte: todayStart, lt: todayEnd } },
       _sum: { total: true },
       _count: { _all: true },
     }),
     prisma.order.aggregate({
-      where: { status: 'COMPLETED', createdAt: { gte: yesterdayStart, lt: todayStart } },
+      where: { shopId, status: 'COMPLETED', createdAt: { gte: yesterdayStart, lt: todayStart } },
       _sum: { total: true },
       _count: { _all: true },
     }),
-    prisma.order.count({ where: { status: { in: cancelledStatuses }, createdAt: { gte: todayStart, lt: todayEnd } } }),
-    prisma.order.count({ where: { status: { in: cancelledStatuses }, createdAt: { gte: yesterdayStart, lt: todayStart } } }),
+    prisma.order.count({
+      where: { shopId, status: { in: cancelledStatuses }, createdAt: { gte: todayStart, lt: todayEnd } },
+    }),
+    prisma.order.count({
+      where: { shopId, status: { in: cancelledStatuses }, createdAt: { gte: yesterdayStart, lt: todayStart } },
+    }),
     prisma.orderItem.groupBy({
       by: ['productId', 'productNameSnapshot'],
-      where: { order: { status: 'COMPLETED', createdAt: { gte: productsWindowStart, lt: todayEnd } } },
+      // OrderItem carries its own denormalized shopId column (see schema
+      // comment), so this is filtered directly rather than only via the
+      // nested order relation.
+      where: {
+        shopId,
+        order: { status: 'COMPLETED', createdAt: { gte: productsWindowStart, lt: todayEnd } },
+      },
       _sum: { lineSubtotal: true, quantity: true },
       orderBy: { _sum: { lineSubtotal: 'desc' } },
       take: TOP_PRODUCTS_LIMIT,
     }),
     prisma.payment.groupBy({
       by: ['method'],
-      where: { order: { status: 'COMPLETED', createdAt: { gte: todayStart, lt: todayEnd } } },
+      // Payment also carries its own denormalized shopId column.
+      where: {
+        shopId,
+        order: { status: 'COMPLETED', createdAt: { gte: todayStart, lt: todayEnd } },
+      },
       _sum: { amountDue: true },
       _count: { _all: true },
     }),
     // Cross-column comparison (quantityOnHand <= reorderLevel) isn't
     // expressible in Prisma's fluent where-clause, so this is raw SQL
     // rather than fetching every InventoryItem and filtering in JS.
+    // InventoryItem has no shopId column of its own, so scope via its
+    // parent Product, which does.
     prisma.$queryRaw<LowStockRow[]>`
       SELECT p.id, p.name, ii."quantityOnHand", ii."reorderLevel"
       FROM "InventoryItem" ii
       JOIN "Product" p ON p.id = ii."productId"
-      WHERE p."isActive" = true AND ii."quantityOnHand" <= ii."reorderLevel"
+      WHERE p."isActive" = true AND ii."quantityOnHand" <= ii."reorderLevel" AND p."shopId" = ${shopId}
       ORDER BY (ii."reorderLevel" - ii."quantityOnHand") DESC
       LIMIT ${LOW_STOCK_LIMIT}
     `,
     prisma.order.findMany({
-      where: { status: 'COMPLETED' },
+      where: { shopId, status: 'COMPLETED' },
       orderBy: { createdAt: 'desc' },
       take: RECENT_ORDERS_LIMIT,
       select: {
@@ -120,7 +136,7 @@ export async function getDashboard(now: Date = new Date()) {
              COALESCE(SUM(total), 0)::bigint AS "totalSales",
              COUNT(*)::bigint AS "orderCount"
       FROM "Order"
-      WHERE status = 'COMPLETED' AND "createdAt" >= ${trendStart} AND "createdAt" < ${todayEnd}
+      WHERE status = 'COMPLETED' AND "createdAt" >= ${trendStart} AND "createdAt" < ${todayEnd} AND "shopId" = ${shopId}
       GROUP BY bucket
       ORDER BY bucket
     `,
@@ -131,7 +147,7 @@ export async function getDashboard(now: Date = new Date()) {
       SELECT EXTRACT(HOUR FROM ("createdAt" AT TIME ZONE 'UTC') + (${SHOP_UTC_OFFSET_MINUTES} * interval '1 minute'))::int AS hour,
              COALESCE(SUM(total), 0)::bigint AS "totalSales"
       FROM "Order"
-      WHERE status = 'COMPLETED' AND "createdAt" >= ${todayStart} AND "createdAt" < ${todayEnd}
+      WHERE status = 'COMPLETED' AND "createdAt" >= ${todayStart} AND "createdAt" < ${todayEnd} AND "shopId" = ${shopId}
       GROUP BY hour
       ORDER BY hour
     `,

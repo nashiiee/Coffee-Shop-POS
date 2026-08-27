@@ -7,6 +7,7 @@ const orderFindMany = vi.fn()
 const inventoryTransactionCount = vi.fn()
 const inventoryTransactionFindMany = vi.fn()
 const inventoryTransactionGroupBy = vi.fn()
+const shopFindUnique = vi.fn()
 
 const mockPrisma = {
   $queryRaw: queryRaw,
@@ -16,6 +17,7 @@ const mockPrisma = {
     findMany: inventoryTransactionFindMany,
     groupBy: inventoryTransactionGroupBy,
   },
+  shop: { findUnique: shopFindUnique },
 }
 
 vi.mock('../src/lib/prisma.js', () => ({ prisma: mockPrisma }))
@@ -24,8 +26,8 @@ const { createApp } = await import('../src/app.js')
 const { signAccessToken } = await import('../src/lib/jwt.js')
 
 const app = createApp()
-const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN' })
-const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER' })
+const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN', shopId: 'shop-1' })
+const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER', shopId: 'shop-1' })
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -35,6 +37,7 @@ beforeEach(() => {
   inventoryTransactionCount.mockResolvedValue(0)
   inventoryTransactionFindMany.mockResolvedValue([])
   inventoryTransactionGroupBy.mockResolvedValue([])
+  shopFindUnique.mockResolvedValue({ subscriptionStatus: 'ACTIVE' })
 })
 
 const REPORT_ROUTES = [
@@ -103,6 +106,26 @@ describe('GET /api/admin/reports/sales', () => {
     ])
     const res = await request(app).get('/api/admin/reports/sales').set('Authorization', `Bearer ${adminToken}`)
     expect(res.body.buckets).toEqual([{ date: '2026-01-15', totalSales: 40000, totalDiscounts: 4000, orderCount: 3 }])
+  })
+})
+
+describe('GET /api/admin/reports/categories', () => {
+  it('rejects a cashier', async () => {
+    const res = await request(app).get('/api/admin/reports/categories').set('Authorization', `Bearer ${cashierToken}`)
+    expect(res.status).toBe(403)
+  })
+
+  it('converts bigint revenue/quantitySold rows to plain numbers', async () => {
+    queryRaw.mockResolvedValue([
+      { categoryId: 'cat-1', categoryName: 'Coffee', revenue: 84000n, quantitySold: 12n },
+      { categoryId: 'cat-2', categoryName: 'Bakery', revenue: 3250n, quantitySold: 10n },
+    ])
+    const res = await request(app).get('/api/admin/reports/categories').set('Authorization', `Bearer ${adminToken}`)
+    expect(res.status).toBe(200)
+    expect(res.body.categories).toEqual([
+      { categoryId: 'cat-1', name: 'Coffee', revenue: 84000, quantitySold: 12 },
+      { categoryId: 'cat-2', name: 'Bakery', revenue: 3250, quantitySold: 10 },
+    ])
   })
 })
 

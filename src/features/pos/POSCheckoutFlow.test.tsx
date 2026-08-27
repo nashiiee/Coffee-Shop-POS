@@ -15,7 +15,7 @@ vi.mock('../checkout/api')
 
 const cashier: User = { id: 'cashier-1', name: 'Cara', email: 'c@x.com', role: 'CASHIER' }
 
-const categories: Category[] = [{ id: 'cat-coffee', name: 'Coffee', sortOrder: 0, isActive: true }]
+const categories: Category[] = [{ id: 'cat-coffee', name: 'Coffee', sortOrder: 0, isActive: true, parentId: null }]
 
 const drip: Product = {
   id: 'prod-drip',
@@ -34,7 +34,7 @@ function renderPOS() {
   return render(
     <MemoryRouter>
       <AuthContext.Provider
-        value={{ user: cashier, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}
+        value={{ user: cashier, shop: null, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}
       >
         <POSHome />
       </AuthContext.Provider>
@@ -74,6 +74,9 @@ describe('POS — full checkout flow', () => {
         },
       ],
       payment: { method: 'CASH', amountDue: 25000, amountReceived: 30000, changeGiven: 5000 },
+      voidedAt: null,
+      voidedBy: null,
+      voidReason: null,
     }
     vi.mocked(checkoutApi.checkout).mockResolvedValue(completedOrder)
 

@@ -12,9 +12,11 @@ dist
 dist-ssr
 *.local
 
-# Admin-uploaded product photos (runtime data, not source)
+# Admin-uploaded product photos and shop logos (runtime data, not source)
 server/uploads/products/*
 !server/uploads/products/.gitkeep
+server/uploads/shops/*
+!server/uploads/shops/.gitkeep
 
 # Environment variables
 .env

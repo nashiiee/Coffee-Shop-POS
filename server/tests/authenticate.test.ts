@@ -23,11 +23,11 @@ describe('authenticate middleware', () => {
   })
 
   it('attaches req.user and calls next() for a valid token', () => {
-    const token = signAccessToken({ sub: 'user-1', role: 'CASHIER' })
+    const token = signAccessToken({ sub: 'user-1', role: 'CASHIER', shopId: 'shop-1' })
     const req = mockReq({ authorization: `Bearer ${token}` })
     const next = vi.fn()
     authenticate(req, {} as Response, next)
-    expect(req.user).toEqual({ id: 'user-1', role: 'CASHIER' })
+    expect(req.user).toEqual({ id: 'user-1', role: 'CASHIER', shopId: 'shop-1' })
     expect(next).toHaveBeenCalledWith()
   })
 })

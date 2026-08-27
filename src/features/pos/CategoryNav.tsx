@@ -8,16 +8,16 @@ interface CategoryNavProps {
 
 export function CategoryNav({ categories, selectedCategoryId, onSelect }: CategoryNavProps) {
   return (
-    <nav aria-label="Product categories" className="flex flex-col gap-1 overflow-y-auto">
+    <nav aria-label="Product categories" className="flex flex-wrap gap-2">
       <button
         type="button"
         onClick={() => onSelect(null)}
         aria-pressed={selectedCategoryId === null}
-        className={`rounded-lg px-4 py-3 text-left text-base font-medium ${
-          selectedCategoryId === null ? 'bg-amber-800 text-white' : 'bg-gray-100 hover:bg-amber-100'
+        className={`rounded-full px-5 py-2 text-sm font-medium transition ${
+          selectedCategoryId === null ? 'bg-[#201810] text-white' : 'text-stone-500 hover:bg-stone-100'
         }`}
       >
-        All items
+        All
       </button>
       {categories.map((category) => (
         <button
@@ -25,8 +25,8 @@ export function CategoryNav({ categories, selectedCategoryId, onSelect }: Catego
           type="button"
           onClick={() => onSelect(category.id)}
           aria-pressed={selectedCategoryId === category.id}
-          className={`rounded-lg px-4 py-3 text-left text-base font-medium ${
-            selectedCategoryId === category.id ? 'bg-amber-800 text-white' : 'bg-gray-100 hover:bg-amber-100'
+          className={`rounded-full px-5 py-2 text-sm font-medium transition ${
+            selectedCategoryId === category.id ? 'bg-[#201810] text-white' : 'text-stone-500 hover:bg-stone-100'
           }`}
         >
           {category.name}

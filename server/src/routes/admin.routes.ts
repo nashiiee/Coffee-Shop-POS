@@ -1,6 +1,5 @@
 import { Router } from 'express'
-import { authenticate } from '../middleware/authenticate.js'
-import { authorize } from '../middleware/authorize.js'
+import { requireAuth } from '../middleware/requireAuth.js'
 import { validate } from '../middleware/validate.js'
 import { getDashboardHandler } from '../controllers/dashboard.controller.js'
 import {
@@ -28,7 +27,7 @@ export const adminRouter = Router()
 // Cashiers must never reach any route on this router — every dashboard and
 // report endpoint below relies entirely on this one gate, not on anything
 // per-route.
-adminRouter.use(authenticate, authorize('ADMIN'))
+adminRouter.use(...requireAuth('ADMIN'))
 
 adminRouter.get('/overview', (_req, res) => {
   res.status(200).json({ message: 'Admin area — product, inventory, and reporting features arrive in later phases' })

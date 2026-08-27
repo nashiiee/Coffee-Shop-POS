@@ -27,16 +27,17 @@ const cart: CartState = {
     },
   ],
   notes: '',
+  discountId: null,
 }
 
 const discounts: Discount[] = [{ id: 'disc-1', name: '10% Off', type: 'PERCENTAGE', value: 10, isActive: true, expiresAt: null }]
 
-function renderCheckout(onSuccess = vi.fn(), onCancel = vi.fn()) {
+function renderCheckout(onSuccess = vi.fn(), onCancel = vi.fn(), cartOverride: CartState = cart) {
   return render(
     <AuthContext.Provider
-      value={{ user: cashier, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}
+      value={{ user: cashier, shop: null, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}
     >
-      <CartContext.Provider value={{ cart, dispatch: vi.fn() }}>
+      <CartContext.Provider value={{ cart: cartOverride, dispatch: vi.fn() }}>
         <CheckoutScreen onSuccess={onSuccess} onCancel={onCancel} />
       </CartContext.Provider>
     </AuthContext.Provider>,
@@ -57,9 +58,10 @@ describe('CheckoutScreen — order summary', () => {
   })
 
   it('reduces the total when a discount is selected', async () => {
-    renderCheckout()
+    // Discount selection now happens in the cart panel before checkout —
+    // this screen just reads whatever is already on cart.discountId.
+    renderCheckout(vi.fn(), vi.fn(), { ...cart, discountId: 'disc-1' })
     await screen.findByText(/Latte — Large/)
-    await userEvent.selectOptions(screen.getByLabelText('Discount'), 'disc-1')
     // 575.00 - 10% (57.50, floored to 57.50 exactly here) = 517.50, shown
     // in both the order-summary Total row and the Payment "Total Due" row.
     await waitFor(() => expect(screen.getAllByText('₱517.50').length).toBeGreaterThanOrEqual(1))

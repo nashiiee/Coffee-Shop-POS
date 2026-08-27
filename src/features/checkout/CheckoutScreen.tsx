@@ -17,7 +17,6 @@ export function CheckoutScreen({ onSuccess, onCancel }: CheckoutScreenProps) {
   const { accessToken } = useAuth()
   const { cart } = useCart()
   const [discounts, setDiscounts] = useState<Discount[]>([])
-  const [selectedDiscountId, setSelectedDiscountId] = useState('')
   const [amountReceivedInput, setAmountReceivedInput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -46,7 +45,10 @@ export function CheckoutScreen({ onSuccess, onCancel }: CheckoutScreenProps) {
   }, [accessToken])
 
   const subtotal = cartSubtotal(cart)
-  const selectedDiscount = discounts.find((d) => d.id === selectedDiscountId) ?? null
+  // Discount is chosen back in the cart panel, not here — this screen only
+  // displays what was already selected and resolves its name/type/value for
+  // the preview math.
+  const selectedDiscount = discounts.find((d) => d.id === cart.discountId) ?? null
   const discountAmount = previewDiscountAmount(subtotal, selectedDiscount)
   const total = previewTotal(subtotal, discountAmount)
   const amountReceived = amountReceivedInput.trim() === '' ? 0 : dollarsToCents(amountReceivedInput)
@@ -66,7 +68,7 @@ export function CheckoutScreen({ onSuccess, onCancel }: CheckoutScreenProps) {
         modifierIds: item.modifiers.map((m) => m.modifierId),
         quantity: item.quantity,
       })),
-      ...(selectedDiscountId ? { discountId: selectedDiscountId } : {}),
+      ...(cart.discountId ? { discountId: cart.discountId } : {}),
       amountReceived,
       idempotencyKey,
       ...(cart.notes ? { notes: cart.notes } : {}),
@@ -81,52 +83,45 @@ export function CheckoutScreen({ onSuccess, onCancel }: CheckoutScreenProps) {
   }
 
   return (
-    <div className="mx-auto grid max-w-4xl grid-cols-2 gap-8 p-6">
+    <div className="mx-auto grid w-full max-w-4xl grid-cols-1 gap-6 p-6 sm:grid-cols-2 sm:gap-8 sm:p-8">
       <section>
-        <h2 className="mb-4 text-xl font-semibold">Order summary</h2>
-        <ul className="mb-4 divide-y rounded border">
+        <h2 className="mb-4 text-xl font-semibold text-stone-900">Order summary</h2>
+        <ul className="mb-4 divide-y divide-stone-100 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
           {cart.items.map((item) => (
             <li key={item.id} className="flex items-start justify-between px-4 py-3">
               <div>
-                <p className="font-medium">
+                <p className="font-medium text-stone-800">
                   {item.productName}
                   {item.variantName ? ` — ${item.variantName}` : ''} × {item.quantity}
                 </p>
                 {item.modifiers.length > 0 ? (
-                  <p className="text-sm text-gray-600">{item.modifiers.map((m) => m.name).join(', ')}</p>
+                  <p className="text-sm text-stone-500">{item.modifiers.map((m) => m.name).join(', ')}</p>
                 ) : null}
               </div>
-              <span className="font-medium">{formatCents(lineTotal(item))}</span>
+              <span className="font-medium text-stone-800">{formatCents(lineTotal(item))}</span>
             </li>
           ))}
         </ul>
 
-        <label className="mb-4 flex flex-col gap-1">
-          <span className="text-sm font-medium">Discount</span>
-          <select
-            value={selectedDiscountId}
-            onChange={(event) => setSelectedDiscountId(event.target.value)}
-            className="rounded border px-3 py-2"
-          >
-            <option value="">No discount</option>
-            {discounts.map((discount) => (
-              <option key={discount.id} value={discount.id}>
-                {discount.name} ({discount.type === 'PERCENTAGE' ? `${discount.value}%` : formatCents(discount.value)})
-              </option>
-            ))}
-          </select>
-        </label>
+        {selectedDiscount ? (
+          <div className="mb-4 flex items-center justify-between rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm">
+            <span className="font-medium text-emerald-800">{selectedDiscount.name}</span>
+            <span className="text-emerald-700">
+              {selectedDiscount.type === 'PERCENTAGE' ? `${selectedDiscount.value}% off` : `${formatCents(selectedDiscount.value)} off`}
+            </span>
+          </div>
+        ) : null}
 
-        <div className="space-y-1 rounded border p-4">
-          <div className="flex justify-between text-sm">
+        <div className="space-y-1.5 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+          <div className="flex justify-between text-sm text-stone-500">
             <span>Subtotal</span>
-            <span>{formatCents(subtotal)}</span>
+            <span className="text-stone-700">{formatCents(subtotal)}</span>
           </div>
-          <div className="flex justify-between text-sm">
+          <div className="flex justify-between text-sm text-stone-500">
             <span>Discount</span>
-            <span>−{formatCents(discountAmount)}</span>
+            <span className="text-stone-700">−{formatCents(discountAmount)}</span>
           </div>
-          <div className="flex justify-between border-t pt-1 text-lg font-semibold">
+          <div className="flex justify-between border-t border-stone-100 pt-2 text-lg font-semibold text-stone-900">
             <span>Total</span>
             <span>{formatCents(total)}</span>
           </div>
@@ -134,15 +129,15 @@ export function CheckoutScreen({ onSuccess, onCancel }: CheckoutScreenProps) {
       </section>
 
       <section>
-        <h2 className="mb-4 text-xl font-semibold">Payment</h2>
-        <div className="mb-4 rounded border p-4">
-          <p className="text-sm text-gray-600">Payment Method</p>
-          <p className="mb-3 font-medium">CASH</p>
-          <p className="text-sm text-gray-600">Total Due</p>
-          <p className="mb-3 text-2xl font-semibold">{formatCents(total)}</p>
+        <h2 className="mb-4 text-xl font-semibold text-stone-900">Payment</h2>
+        <div className="mb-4 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+          <p className="text-sm text-stone-500">Payment Method</p>
+          <p className="mb-3 font-medium text-stone-800">CASH</p>
+          <p className="text-sm text-stone-500">Total Due</p>
+          <p className="mb-3 text-2xl font-semibold text-stone-900">{formatCents(total)}</p>
 
-          <label className="mb-3 flex flex-col gap-1">
-            <span className="text-sm font-medium">Cash Received</span>
+          <label className="mb-3 flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-stone-700">Cash Received</span>
             <input
               type="number"
               step="0.01"
@@ -150,12 +145,12 @@ export function CheckoutScreen({ onSuccess, onCancel }: CheckoutScreenProps) {
               value={amountReceivedInput}
               onChange={(event) => setAmountReceivedInput(event.target.value)}
               autoFocus
-              className="rounded border px-3 py-3 text-lg"
+              className="rounded-lg border border-stone-200 px-3 py-3 text-lg focus:border-[#E8935A] focus:ring-1 focus:ring-[#E8935A] focus:outline-none"
             />
           </label>
 
           {hasEnteredAmount && !isSufficient ? (
-            <p role="alert" className="mb-3 text-red-600">
+            <p role="alert" className="mb-3 text-rose-600">
               Insufficient payment
               <br />
               {formatCents(shortfall)} remaining
@@ -164,14 +159,14 @@ export function CheckoutScreen({ onSuccess, onCancel }: CheckoutScreenProps) {
 
           {isSufficient ? (
             <div className="mb-3">
-              <p className="text-sm text-gray-600">Change</p>
+              <p className="text-sm text-stone-500">Change</p>
               <p className="text-2xl font-semibold text-amber-700">{formatCents(changeGiven)}</p>
             </div>
           ) : null}
         </div>
 
         {error ? (
-          <p role="alert" className="mb-3 text-red-600">
+          <p role="alert" className="mb-3 text-rose-600">
             {error}
           </p>
         ) : null}
@@ -181,7 +176,7 @@ export function CheckoutScreen({ onSuccess, onCancel }: CheckoutScreenProps) {
             type="button"
             onClick={onCancel}
             disabled={isSubmitting}
-            className="rounded-lg border px-4 py-3 text-base hover:bg-gray-50 disabled:opacity-40"
+            className="rounded-xl border border-stone-200 px-5 py-3 text-base font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-40"
           >
             Back to cart
           </button>
@@ -189,7 +184,7 @@ export function CheckoutScreen({ onSuccess, onCancel }: CheckoutScreenProps) {
             type="button"
             onClick={() => void handleConfirm()}
             disabled={!isSufficient || isSubmitting}
-            className="flex-1 rounded-lg bg-amber-700 py-3 text-lg font-medium text-white disabled:opacity-40"
+            className="flex-1 rounded-xl bg-[#201810] px-5 py-3 text-lg font-medium text-white hover:bg-[#2b2016] disabled:opacity-40"
           >
             {isSubmitting ? 'Processing…' : 'Complete Payment'}
           </button>

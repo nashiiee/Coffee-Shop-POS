@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { ProductFormPage } from './ProductFormPage'
 import { AuthContext } from '../auth/authContext'
+import { ToastProvider } from '../admin/ToastProvider'
 import * as catalogApi from './api'
 import type { User } from '../auth/types'
 import type { Category, Modifier, Product } from './types'
@@ -12,7 +13,7 @@ vi.mock('./api')
 
 const admin: User = { id: 'admin-1', name: 'Admin', email: 'a@x.com', role: 'ADMIN' }
 
-const categories: Category[] = [{ id: 'cat-1', name: 'Coffee', sortOrder: 0, isActive: true }]
+const categories: Category[] = [{ id: 'cat-1', name: 'Coffee', sortOrder: 0, isActive: true, parentId: null }]
 const modifiers: Modifier[] = [
   { id: 'mod-1', name: 'Extra Shot', price: 75, isActive: true },
   { id: 'mod-2', name: 'Vanilla Syrup', price: 60, isActive: true },
@@ -20,13 +21,15 @@ const modifiers: Modifier[] = [
 
 function renderAt(path: string) {
   return render(
-    <AuthContext.Provider value={{ user: admin, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/admin/products/new" element={<ProductFormPage />} />
-          <Route path="/admin/products/:id" element={<ProductFormPage />} />
-        </Routes>
-      </MemoryRouter>
+    <AuthContext.Provider value={{ user: admin, shop: null, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
+      <ToastProvider>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/admin/products/new" element={<ProductFormPage />} />
+            <Route path="/admin/products/:id" element={<ProductFormPage />} />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>
     </AuthContext.Provider>,
   )
 }
@@ -69,6 +72,34 @@ describe('ProductFormPage — create', () => {
         basePrice: 450,
       }),
     )
+  })
+
+  it('shows a success toast after creating a product', async () => {
+    const created: Product = {
+      id: 'prod-1',
+      categoryId: 'cat-1',
+      name: 'Latte',
+      description: null,
+      basePrice: 450,
+      isActive: true,
+      imageUrl: null,
+      category: categories[0]!,
+      variants: [],
+      modifiers: [],
+    }
+    vi.mocked(catalogApi.createProduct).mockResolvedValue(created)
+    vi.mocked(catalogApi.getProduct).mockResolvedValue(created)
+
+    renderAt('/admin/products/new')
+    await screen.findByText('Coffee', { selector: 'option' })
+
+    await userEvent.selectOptions(screen.getByLabelText('Category'), 'cat-1')
+    await userEvent.type(screen.getByLabelText('Name'), 'Latte')
+    await userEvent.type(screen.getByLabelText('Base price'), '4.50')
+    await userEvent.click(screen.getByRole('button', { name: /create product/i }))
+
+    const toast = await screen.findByRole('status')
+    expect(toast).toHaveTextContent('Product "Latte" added')
   })
 })
 

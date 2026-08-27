@@ -1,9 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useAuth } from '../auth/useAuth'
 import { ApiError } from '../../lib/apiClient'
 import { dollarsToCents, formatCents } from '../../lib/money'
 import * as discountsApi from './api'
 import type { Discount } from './types'
+import { DiscountIcon } from '../admin/icons'
+import { useToast } from '../admin/useToast'
 
 type DiscountType = 'PERCENTAGE' | 'FIXED'
 
@@ -37,9 +39,10 @@ interface DiscountFormFieldsProps {
   values: DiscountFormState
   onChange: (next: DiscountFormState) => void
   labels: { name: string; type: string; value: string; expiresAt: string }
+  nameInputRef?: React.RefObject<HTMLInputElement | null>
 }
 
-function DiscountFormFields({ values, onChange, labels }: DiscountFormFieldsProps) {
+function DiscountFormFields({ values, onChange, labels, nameInputRef }: DiscountFormFieldsProps) {
   function handleTypeChange(nextType: DiscountType) {
     // A percentage-points value and a dollar amount are different units —
     // carrying the same numeric string over to the other type would submit
@@ -50,32 +53,33 @@ function DiscountFormFields({ values, onChange, labels }: DiscountFormFieldsProp
 
   return (
     <>
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">Name</span>
+      <label className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium text-stone-700">Name</span>
         <input
+          ref={nameInputRef}
           type="text"
           value={values.name}
           onChange={(event) => onChange({ ...values, name: event.target.value })}
           placeholder="e.g. Staff Discount"
           aria-label={labels.name}
           required
-          className="rounded border px-3 py-2"
+          className="rounded-lg border border-stone-200 px-3 py-2.5 text-sm focus:border-stone-400 focus:ring-1 focus:ring-stone-400 focus:outline-none"
         />
       </label>
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">Type</span>
+      <label className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium text-stone-700">Type</span>
         <select
           value={values.type}
           onChange={(event) => handleTypeChange(event.target.value as DiscountType)}
           aria-label={labels.type}
-          className="rounded border px-3 py-2"
+          className="rounded-lg border border-stone-200 px-3 py-2.5 text-sm focus:border-stone-400 focus:ring-1 focus:ring-stone-400 focus:outline-none"
         >
           <option value="PERCENTAGE">Percentage</option>
           <option value="FIXED">Fixed amount</option>
         </select>
       </label>
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">{values.type === 'PERCENTAGE' ? 'Percent off' : 'Amount off'}</span>
+      <label className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium text-stone-700">{values.type === 'PERCENTAGE' ? 'Percent off' : 'Amount off'}</span>
         <input
           type="number"
           step={values.type === 'PERCENTAGE' ? '1' : '0.01'}
@@ -85,27 +89,115 @@ function DiscountFormFields({ values, onChange, labels }: DiscountFormFieldsProp
           onChange={(event) => onChange({ ...values, value: event.target.value })}
           aria-label={labels.value}
           required
-          className="w-28 rounded border px-3 py-2"
+          className="rounded-lg border border-stone-200 px-3 py-2.5 text-sm focus:border-stone-400 focus:ring-1 focus:ring-stone-400 focus:outline-none"
         />
       </label>
-      <label className="flex flex-col gap-1">
-        <span className="text-sm font-medium">Expires</span>
+      <label className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium text-stone-700">Expires</span>
         <input
           type="date"
           value={values.expiresAt}
           onChange={(event) => onChange({ ...values, expiresAt: event.target.value })}
           aria-label={labels.expiresAt}
-          className="rounded border px-3 py-2"
+          className="rounded-lg border border-stone-200 px-3 py-2.5 text-sm focus:border-stone-400 focus:ring-1 focus:ring-stone-400 focus:outline-none"
         />
       </label>
     </>
   )
 }
 
+// Matches ConfirmDialog.tsx's focus-trap selector — kept in sync
+// deliberately rather than shared, both are small single-purpose modals.
+const FOCUSABLE_SELECTOR = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+
+interface AddDiscountModalProps {
+  onCreate: (values: DiscountFormState) => Promise<void>
+  onClose: () => void
+}
+
+function AddDiscountModal({ onCreate, onClose }: AddDiscountModalProps) {
+  const [values, setValues] = useState<DiscountFormState>(emptyForm)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const nameInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    nameInputRef.current?.focus()
+  }, [])
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        onClose()
+        return
+      }
+      if (event.key !== 'Tab' || !dialogRef.current) return
+      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+      if (focusable.length === 0) return
+      const first = focusable[0]!
+      const last = focusable[focusable.length - 1]!
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setIsSubmitting(true)
+    await onCreate(values)
+    setIsSubmitting(false)
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="add-discount-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div ref={dialogRef} className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(event) => event.stopPropagation()}>
+        <h2 id="add-discount-title" className="mb-1 text-lg font-semibold text-stone-900">
+          New discount
+        </h2>
+        <p className="mb-4 text-sm text-stone-500">Cashiers can apply this at checkout.</p>
+        <form onSubmit={(event) => void handleSubmit(event)} noValidate className="flex flex-col gap-4">
+          <DiscountFormFields
+            values={values}
+            onChange={setValues}
+            nameInputRef={nameInputRef}
+            labels={{ name: 'Discount name', type: 'Discount type', value: 'Discount value', expiresAt: 'Discount expiry date' }}
+          />
+          <div className="mt-2 flex justify-end gap-3">
+            <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-stone-600 hover:bg-stone-100">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-50"
+            >
+              {isSubmitting ? 'Adding…' : 'Add discount'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 export function DiscountsPage() {
   const { accessToken } = useAuth()
+  const { showToast } = useToast()
   const [discounts, setDiscounts] = useState<Discount[]>([])
-  const [form, setForm] = useState<DiscountFormState>(emptyForm)
+  const [isAddOpen, setIsAddOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState<DiscountFormState>(emptyForm)
   const [error, setError] = useState<string | null>(null)
@@ -134,17 +226,17 @@ export function DiscountsPage() {
     }
   }, [accessToken])
 
-  async function handleCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  async function handleCreate(values: DiscountFormState) {
     setError(null)
     try {
       await discountsApi.createDiscount(accessToken, {
-        name: form.name,
-        type: form.type,
-        value: valueToCents(form.type, form.value),
-        ...(form.expiresAt ? { expiresAt: new Date(form.expiresAt).toISOString() } : {}),
+        name: values.name,
+        type: values.type,
+        value: valueToCents(values.type, values.value),
+        ...(values.expiresAt ? { expiresAt: new Date(values.expiresAt).toISOString() } : {}),
       })
-      setForm(emptyForm)
+      setIsAddOpen(false)
+      showToast(`Discount "${values.name}" added`)
       await refresh()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to create discount')
@@ -194,33 +286,31 @@ export function DiscountsPage() {
 
   return (
     <section>
-      <h2 className="mb-4 text-xl font-semibold">Discounts</h2>
+      <header className="mb-6 flex items-center justify-between">
+        <h2 className="text-xl font-semibold text-stone-900">Discounts</h2>
+        <button
+          type="button"
+          onClick={() => setIsAddOpen(true)}
+          className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+        >
+          Add discount
+        </button>
+      </header>
       {error ? (
         <p role="alert" className="mb-3 text-red-600">
           {error}
         </p>
       ) : null}
 
-      <form onSubmit={handleCreate} noValidate className="mb-6 flex flex-wrap items-end gap-2">
-        <DiscountFormFields
-          values={form}
-          onChange={setForm}
-          labels={{ name: 'Discount name', type: 'Discount type', value: 'Discount value', expiresAt: 'Discount expiry date' }}
-        />
-        <button type="submit" className="rounded bg-black px-4 py-2 text-white">
-          Add discount
-        </button>
-      </form>
-
       {isLoading ? (
         <p>Loading…</p>
       ) : discounts.length === 0 ? (
-        <p>No discounts yet.</p>
+        <p className="text-stone-400">No discounts yet.</p>
       ) : (
-        <ul className="divide-y rounded border">
+        <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {discounts.map((discount) =>
             editingId === discount.id ? (
-              <li key={discount.id} className="px-4 py-3">
+              <li key={discount.id} className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:col-span-2 lg:col-span-3">
                 <form onSubmit={handleSaveEdit} noValidate className="flex flex-wrap items-end gap-2">
                   <DiscountFormFields
                     values={editForm}
@@ -241,26 +331,52 @@ export function DiscountsPage() {
                 </form>
               </li>
             ) : (
-              <li key={discount.id} className="flex items-center justify-between px-4 py-2">
-                <span>
-                  {discount.name} —{' '}
-                  {discount.type === 'PERCENTAGE' ? `${discount.value}%` : formatCents(discount.value)} off
-                  {discount.expiresAt ? ` (expires ${new Date(discount.expiresAt).toLocaleDateString()})` : ''}{' '}
-                  {discount.isActive ? null : <span className="text-gray-500">(inactive)</span>}
+              <li
+                key={discount.id}
+                className={`flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm transition hover:shadow-md ${
+                  discount.isActive ? '' : 'opacity-60'
+                }`}
+              >
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-stone-500">
+                  <DiscountIcon />
                 </span>
-                <span className="flex gap-3">
-                  <button type="button" onClick={() => startEdit(discount)} className="text-sm underline">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold text-stone-800">{discount.name}</p>
+                  <p className="text-sm text-stone-500">
+                    {discount.type === 'PERCENTAGE' ? `${discount.value}% off` : `${formatCents(discount.value)} off`}
+                    {discount.expiresAt ? ` · expires ${new Date(discount.expiresAt).toLocaleDateString()}` : ''}
+                  </p>
+                  <span
+                    className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                      discount.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-100 text-stone-500'
+                    }`}
+                  >
+                    {discount.isActive ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+                <div className="flex shrink-0 flex-col gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => startEdit(discount)}
+                    className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 hover:bg-stone-50"
+                  >
                     Edit
                   </button>
-                  <button type="button" onClick={() => void toggleActive(discount)} className="text-sm underline">
+                  <button
+                    type="button"
+                    onClick={() => void toggleActive(discount)}
+                    className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 hover:bg-stone-50"
+                  >
                     {discount.isActive ? 'Deactivate' : 'Activate'}
                   </button>
-                </span>
+                </div>
               </li>
             ),
           )}
         </ul>
       )}
+
+      {isAddOpen ? <AddDiscountModal onCreate={handleCreate} onClose={() => setIsAddOpen(false)} /> : null}
     </section>
   )
 }

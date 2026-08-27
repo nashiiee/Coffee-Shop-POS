@@ -5,9 +5,11 @@ import path from 'node:path'
 
 const productFindUnique = vi.fn()
 const productUpdate = vi.fn()
+const shopFindUnique = vi.fn()
 
 const mockPrisma = {
   product: { findUnique: productFindUnique, update: productUpdate },
+  shop: { findUnique: shopFindUnique },
 }
 
 vi.mock('../src/lib/prisma.js', () => ({ prisma: mockPrisma }))
@@ -17,8 +19,8 @@ const { signAccessToken } = await import('../src/lib/jwt.js')
 const { PRODUCT_UPLOADS_DIR } = await import('../src/services/productImage.service.js')
 
 const app = createApp()
-const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN' })
-const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER' })
+const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN', shopId: 'shop-1' })
+const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER', shopId: 'shop-1' })
 
 const existingProduct = { id: 'prod-1', name: 'Latte', imageUrl: null }
 const tinyJpegBuffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10])
@@ -27,6 +29,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   productFindUnique.mockResolvedValue(existingProduct)
   productUpdate.mockResolvedValue({ ...existingProduct })
+  shopFindUnique.mockResolvedValue({ subscriptionStatus: 'ACTIVE' })
 })
 
 afterEach(async () => {
@@ -89,5 +92,25 @@ describe('POST /api/products/:id/image — behavior', () => {
 
     const written = await fs.readFile(path.join(PRODUCT_UPLOADS_DIR, path.basename(res.body.imageUrl)))
     expect(written).toEqual(tinyJpegBuffer)
+  })
+
+  it('deletes the previous image file when replacing an existing one', async () => {
+    // Seed a real "previous" file on disk so we can prove it gets cleaned up
+    // — the fixture in every other test has imageUrl: null, which never
+    // exercises this path at all.
+    await fs.mkdir(PRODUCT_UPLOADS_DIR, { recursive: true })
+    const previousFilename = 'prod-1-1000000000000.jpg'
+    await fs.writeFile(path.join(PRODUCT_UPLOADS_DIR, previousFilename), Buffer.from('old photo'))
+    productFindUnique.mockResolvedValue({ ...existingProduct, imageUrl: `/uploads/products/${previousFilename}` })
+
+    const res = await request(app)
+      .post('/api/products/prod-1/image')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('image', tinyJpegBuffer, 'new-photo.jpg')
+
+    expect(res.status).toBe(200)
+    expect(res.body.imageUrl).not.toBe(`/uploads/products/${previousFilename}`)
+
+    await expect(fs.readFile(path.join(PRODUCT_UPLOADS_DIR, previousFilename))).rejects.toThrow()
   })
 })

@@ -5,6 +5,7 @@ import { ApiError } from '../../lib/apiClient'
 import { dollarsToCents, formatCents } from '../../lib/money'
 import { resolveProductImage } from '../../lib/productImages'
 import { CameraIcon } from '../admin/icons'
+import { useToast } from '../admin/useToast'
 import * as catalogApi from './api'
 import type { Category, Modifier, Product } from './types'
 
@@ -91,6 +92,7 @@ export function ProductFormPage() {
   const { accessToken } = useAuth()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { showToast } = useToast()
   const isEditing = Boolean(id)
 
   const [categories, setCategories] = useState<Category[]>([])
@@ -226,6 +228,7 @@ export function ProductFormPage() {
             setIsUploadingImage(false)
           }
         }
+        showToast(`Product "${created.name}" added`)
         navigate(`/admin/products/${created.id}`, { replace: true })
       }
     } catch (err) {

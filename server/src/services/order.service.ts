@@ -2,6 +2,8 @@ import type { Prisma, Role } from '@prisma/client'
 import { prisma } from '../lib/prisma.js'
 import { AppError } from '../lib/AppError.js'
 import { orderInclude } from './checkout.service.js'
+import { applyInventoryChange } from './inventory.service.js'
+import { recordAudit } from './audit.service.js'
 import type { ListOrdersQuery } from '../schemas/order.schema.js'
 
 const orderListSelect = {
@@ -26,8 +28,8 @@ interface ActingUser {
 // value coming from the request is only ever honored for ADMIN. This is
 // enforced here (not just hidden in the UI) so a cashier can never see
 // another cashier's order history by crafting the request directly.
-function buildWhere(filters: ListOrdersQuery, actingUser: ActingUser): Prisma.OrderWhereInput {
-  const where: Prisma.OrderWhereInput = {}
+function buildWhere(filters: ListOrdersQuery, actingUser: ActingUser, shopId: string): Prisma.OrderWhereInput {
+  const where: Prisma.OrderWhereInput = { shopId }
 
   if (actingUser.role === 'CASHIER') {
     where.cashierId = actingUser.id
@@ -95,8 +97,8 @@ function resolveOrderBy(sortBy: ListOrdersQuery['sortBy']): Prisma.OrderOrderByW
   }
 }
 
-export async function listOrders(filters: ListOrdersQuery, actingUser: ActingUser) {
-  const where = buildWhere(filters, actingUser)
+export async function listOrders(filters: ListOrdersQuery, actingUser: ActingUser, shopId: string) {
+  const where = buildWhere(filters, actingUser, shopId)
   const skip = (filters.page - 1) * filters.pageSize
 
   const [total, orders] = await Promise.all([
@@ -116,16 +118,16 @@ export async function listOrders(filters: ListOrdersQuery, actingUser: ActingUse
 // Backs the ADMIN "filter by cashier" dropdown. Lists every cashier
 // account regardless of isActive, since a deactivated cashier's past
 // orders must remain filterable.
-export function listCashiers() {
+export function listCashiers(shopId: string) {
   return prisma.user.findMany({
-    where: { role: 'CASHIER' },
+    where: { role: 'CASHIER', shopId },
     select: { id: true, name: true },
     orderBy: { name: 'asc' },
   })
 }
 
-export async function getOrderById(orderId: string, actingUser: ActingUser) {
-  const order = await prisma.order.findUnique({ where: { id: orderId }, include: orderInclude })
+export async function getOrderById(orderId: string, actingUser: ActingUser, shopId: string) {
+  const order = await prisma.order.findUnique({ where: { id: orderId, shopId }, include: orderInclude })
   if (!order) {
     throw AppError.notFound('Order not found')
   }
@@ -133,4 +135,82 @@ export async function getOrderById(orderId: string, actingUser: ActingUser) {
     throw AppError.forbidden('You do not have permission to view this order')
   }
   return order
+}
+
+type VoidStatus = 'CANCELLED' | 'REFUNDED'
+
+// Shared by cancelOrder/refundOrder below — cancel and refund differ only in
+// the resulting status and audit action; restocking, guards, and the
+// transaction shape are identical. Admin-only (enforced at the route), full
+// order only (no partial/per-item voids in this version).
+async function voidOrder(orderId: string, actorId: string, targetStatus: VoidStatus, reason: string, shopId: string) {
+  return prisma.$transaction(async (tx) => {
+    // Locks this specific order row so a concurrent cancel+refund (or a
+    // double-click) on the SAME order can't both read status: COMPLETED and
+    // both restock inventory — the second transaction blocks here until the
+    // first commits, then re-reads the now-updated status and correctly
+    // hits the guard below. Mirrors the admin-lockout guard's row lock in
+    // users.service.ts's disableUser. shopId is part of the lock query
+    // itself (not just a post-hoc check) so a guessed cross-shop orderId can
+    // never lock or read another shop's order row at all.
+    const locked = await tx.$queryRaw<{ id: string; status: VoidStatus | 'COMPLETED' }[]>`
+      SELECT id, status FROM "Order" WHERE id = ${orderId} AND "shopId" = ${shopId} FOR UPDATE
+    `
+    const current = locked[0]
+    if (!current) {
+      throw AppError.notFound('Order not found')
+    }
+    if (current.status !== 'COMPLETED') {
+      throw AppError.conflict(`This order is already ${current.status.toLowerCase()}`)
+    }
+
+    // Order.items always resolves — a product referenced by any OrderItem
+    // can never be hard-deleted (product.service.ts's deleteProduct blocks
+    // on existing order history), so its InventoryItem row is guaranteed to
+    // still exist for applyInventoryChange to find.
+    const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { sequenceNumber: true, items: true } })
+
+    for (const item of order.items) {
+      await applyInventoryChange(
+        tx,
+        item.productId,
+        {
+          type: 'STOCK_IN',
+          quantityChange: item.quantity,
+          reason: `Order #${order.sequenceNumber} ${targetStatus.toLowerCase()}`,
+        },
+        actorId,
+        shopId,
+      )
+    }
+
+    const updated = await tx.order.update({
+      where: { id: orderId, shopId },
+      data: { status: targetStatus, voidedAt: new Date(), voidedById: actorId, voidReason: reason },
+      include: orderInclude,
+    })
+
+    await recordAudit(
+      {
+        shopId,
+        actorId,
+        action: targetStatus === 'CANCELLED' ? 'ORDER_CANCELLED' : 'ORDER_REFUNDED',
+        resource: 'Order',
+        resourceId: orderId,
+        previousState: { status: 'COMPLETED' },
+        newState: { status: targetStatus, reason },
+      },
+      tx,
+    )
+
+    return updated
+  })
+}
+
+export function cancelOrder(orderId: string, actorId: string, reason: string, shopId: string) {
+  return voidOrder(orderId, actorId, 'CANCELLED', reason, shopId)
+}
+
+export function refundOrder(orderId: string, actorId: string, reason: string, shopId: string) {
+  return voidOrder(orderId, actorId, 'REFUNDED', reason, shopId)
 }

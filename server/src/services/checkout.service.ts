@@ -11,6 +11,7 @@ export const orderInclude = {
   discount: true,
   items: { include: { modifiers: true } },
   payment: true,
+  voidedBy: { select: { id: true, name: true } },
 } as const
 
 function formatPeso(cents: number): string {
@@ -39,9 +40,9 @@ interface ResolvedItem {
 // Re-derives every price from the live catalog inside the transaction — the
 // request only ever supplies productId/variantId/modifierIds/quantity (see
 // checkout.schema.ts). Never reads a price, subtotal, or total from `input`.
-async function resolveItem(tx: Prisma.TransactionClient, cartItem: CheckoutItemInput): Promise<ResolvedItem> {
+async function resolveItem(tx: Prisma.TransactionClient, cartItem: CheckoutItemInput, shopId: string): Promise<ResolvedItem> {
   const product = await tx.product.findUnique({
-    where: { id: cartItem.productId },
+    where: { id: cartItem.productId, shopId },
     include: { variants: true, modifiers: { include: { modifier: true } } },
   })
   if (!product || !product.isActive) {
@@ -93,14 +94,14 @@ async function resolveItem(tx: Prisma.TransactionClient, cartItem: CheckoutItemI
   }
 }
 
-async function findByIdempotencyKey(idempotencyKey: string) {
-  return prisma.order.findUnique({ where: { idempotencyKey }, include: orderInclude })
+async function findByIdempotencyKey(idempotencyKey: string, shopId: string) {
+  return prisma.order.findUnique({ where: { idempotencyKey, shopId }, include: orderInclude })
 }
 
-export async function checkout(input: CheckoutInput, cashierId: string) {
+export async function checkout(input: CheckoutInput, cashierId: string, shopId: string) {
   // Cheap pre-check outside any transaction: a plain retry (no concurrent
   // race) short-circuits immediately without touching pricing/inventory.
-  const existing = await findByIdempotencyKey(input.idempotencyKey)
+  const existing = await findByIdempotencyKey(input.idempotencyKey, shopId)
   if (existing) {
     return existing
   }
@@ -110,14 +111,14 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
       const resolvedItems: ResolvedItem[] = []
       let subtotal = 0
       for (const cartItem of input.items) {
-        const resolved = await resolveItem(tx, cartItem)
+        const resolved = await resolveItem(tx, cartItem, shopId)
         resolvedItems.push(resolved)
         subtotal += resolved.lineSubtotal
       }
 
       let discount: { id: string; name: string; type: 'PERCENTAGE' | 'FIXED'; value: number } | null = null
       if (input.discountId) {
-        const found = await tx.discount.findUnique({ where: { id: input.discountId } })
+        const found = await tx.discount.findUnique({ where: { id: input.discountId, shopId } })
         if (!found || !found.isActive) {
           throw AppError.badRequest('Selected discount is not available')
         }
@@ -139,8 +140,25 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
         throw AppError.badRequest(`Insufficient payment: ${formatPeso(payment.shortfall)} remaining`)
       }
 
+      // Per-shop receipt numbering: FOR UPDATE locks the Shop row for the
+      // rest of this transaction, so a concurrent checkout for the same
+      // shop blocks here instead of both reading the same nextOrderSequence
+      // and colliding on the (shopId, sequenceNumber) unique constraint.
+      // This serializes checkouts per-shop, not globally — a non-issue at
+      // the scale of a few registers per physical coffee shop.
+      const lockedShop = await tx.$queryRaw<{ nextOrderSequence: number }[]>`
+        SELECT "nextOrderSequence" FROM "Shop" WHERE id = ${shopId} FOR UPDATE
+      `
+      const nextOrderSequence = lockedShop[0]?.nextOrderSequence
+      if (nextOrderSequence === undefined) {
+        throw AppError.notFound('Shop not found')
+      }
+      await tx.shop.update({ where: { id: shopId }, data: { nextOrderSequence: { increment: 1 } } })
+
       const createdOrder = await tx.order.create({
         data: omitUndefined({
+          shopId,
+          sequenceNumber: nextOrderSequence,
           cashierId,
           subtotal,
           discountId: discount?.id,
@@ -155,6 +173,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
       for (const item of resolvedItems) {
         const orderItem = await tx.orderItem.create({
           data: omitUndefined({
+            shopId,
             orderId: createdOrder.id,
             productId: item.productId,
             productNameSnapshot: item.productName,
@@ -197,11 +216,13 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
             reason: `Order #${createdOrder.sequenceNumber}`,
           },
           cashierId,
+          shopId,
         )
       }
 
       await tx.payment.create({
         data: {
+          shopId,
           orderId: createdOrder.id,
           method: 'CASH',
           amountDue: total,
@@ -220,7 +241,7 @@ export async function checkout(input: CheckoutInput, cashierId: string) {
     // the winner's order rather than an error: checkout that the cashier
     // intended did happen, just via the other request.
     if (isIdempotencyKeyConflict(err)) {
-      const winner = await findByIdempotencyKey(input.idempotencyKey)
+      const winner = await findByIdempotencyKey(input.idempotencyKey, shopId)
       if (winner) {
         return winner
       }

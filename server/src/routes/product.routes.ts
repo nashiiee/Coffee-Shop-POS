@@ -1,7 +1,6 @@
 import { Router } from 'express'
 import multer from 'multer'
-import { authenticate } from '../middleware/authenticate.js'
-import { authorize } from '../middleware/authorize.js'
+import { requireAuth } from '../middleware/requireAuth.js'
 import { validate } from '../middleware/validate.js'
 import { MAX_PRODUCT_IMAGE_BYTES } from '../services/productImage.service.js'
 import {
@@ -30,38 +29,34 @@ const uploadProductImage = multer({
 
 export const productRouter = Router()
 
-productRouter.get('/', authenticate, authorize('ADMIN', 'CASHIER'), listProductsHandler)
-productRouter.get('/:id', authenticate, authorize('ADMIN', 'CASHIER'), getProductHandler)
-productRouter.post('/', authenticate, authorize('ADMIN'), validate(createProductSchema), createProductHandler)
-productRouter.patch('/:id', authenticate, authorize('ADMIN'), validate(updateProductSchema), updateProductHandler)
-productRouter.delete('/:id', authenticate, authorize('ADMIN'), deleteProductHandler)
+productRouter.get('/', ...requireAuth('ADMIN', 'CASHIER'), listProductsHandler)
+productRouter.get('/:id', ...requireAuth('ADMIN', 'CASHIER'), getProductHandler)
+productRouter.post('/', ...requireAuth('ADMIN'), validate(createProductSchema), createProductHandler)
+productRouter.patch('/:id', ...requireAuth('ADMIN'), validate(updateProductSchema), updateProductHandler)
+productRouter.delete('/:id', ...requireAuth('ADMIN'), deleteProductHandler)
 productRouter.post(
   '/:id/image',
-  authenticate,
-  authorize('ADMIN'),
+  ...requireAuth('ADMIN'),
   uploadProductImage.single('image'),
   uploadProductImageHandler,
 )
 
 productRouter.post(
   '/:id/variants',
-  authenticate,
-  authorize('ADMIN'),
+  ...requireAuth('ADMIN'),
   validate(createVariantSchema),
   createVariantHandler,
 )
 productRouter.patch(
   '/:id/variants/:variantId',
-  authenticate,
-  authorize('ADMIN'),
+  ...requireAuth('ADMIN'),
   validate(updateVariantSchema),
   updateVariantHandler,
 )
 
 productRouter.put(
   '/:id/modifiers',
-  authenticate,
-  authorize('ADMIN'),
+  ...requireAuth('ADMIN'),
   validate(setProductModifiersSchema),
   setProductModifiersHandler,
 )

@@ -26,3 +26,11 @@ export function getOrder(accessToken: Token, id: string) {
 export function listCashiers(accessToken: Token) {
   return apiRequest<CashierOption[]>('/api/orders/cashiers', { accessToken })
 }
+
+export function cancelOrder(accessToken: Token, id: string, reason: string) {
+  return apiRequest<OrderRecord>(`/api/orders/${id}/cancel`, { method: 'PATCH', body: { reason }, accessToken })
+}
+
+export function refundOrder(accessToken: Token, id: string, reason: string) {
+  return apiRequest<OrderRecord>(`/api/orders/${id}/refund`, { method: 'PATCH', body: { reason }, accessToken })
+}

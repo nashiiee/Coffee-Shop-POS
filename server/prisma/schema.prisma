@@ -12,8 +12,43 @@ enum Role {
   CASHIER
 }
 
+enum ShopSubscriptionStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+// One row per client business. Every tenant-owned model below carries a
+// shopId so one shared app + one shared database can serve many coffee
+// shops with each shop's data isolated by row (see the multi-tenant retrofit
+// plan). subscriptionStatus is the kill switch: requireActiveShop
+// middleware rejects any request for a SUSPENDED shop, and login()/refresh()
+// in auth.service.ts also check it directly so a suspended shop's staff
+// can't even sign in. nextOrderSequence backs per-shop receipt numbering
+// (see Order.sequenceNumber below) since a single global Postgres SERIAL
+// would interleave confusing order numbers across shops.
+model Shop {
+  id                 String                 @id @default(cuid())
+  name               String
+  logoUrl            String?
+  subscriptionStatus ShopSubscriptionStatus @default(ACTIVE)
+  suspendedAt        DateTime?              @db.Timestamptz(3)
+  suspendedReason    String?
+  nextOrderSequence  Int                    @default(1)
+  users              User[]
+  categories         Category[]
+  products           Product[]
+  modifiers          Modifier[]
+  discounts          Discount[]
+  orders             Order[]
+  auditLogs          AuditLog[]
+  createdAt          DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime               @updatedAt @db.Timestamptz(3)
+}
+
 model User {
   id                    String                 @id @default(cuid())
+  shopId                String
+  shop                  Shop                   @relation(fields: [shopId], references: [id], onDelete: Restrict)
   name                  String
   email                 String                 @unique
   passwordHash          String
@@ -21,11 +56,13 @@ model User {
   isActive              Boolean                @default(true)
   inventoryTransactions InventoryTransaction[]
   orders                Order[]
+  voidedOrders          Order[]                @relation("OrderVoidedBy")
   auditLogs             AuditLog[]
   createdAt             DateTime               @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime               @updatedAt @db.Timestamptz(3)
 
   @@index([role])
+  @@index([shopId])
 }
 
 enum AuditAction {
@@ -41,6 +78,8 @@ enum AuditAction {
   DISCOUNT_CREATED
   DISCOUNT_UPDATED
   CONFIG_CHANGED
+  ORDER_CANCELLED
+  ORDER_REFUNDED
 }
 
 // Append-only: no route ever exposes update or delete for this model, at any
@@ -50,6 +89,8 @@ enum AuditAction {
 // human-readable trail, not a source of truth to rebuild state from.
 model AuditLog {
   id            String      @id @default(cuid())
+  shopId        String
+  shop          Shop        @relation(fields: [shopId], references: [id], onDelete: Restrict)
   actorId       String
   actor         User        @relation(fields: [actorId], references: [id], onDelete: Restrict)
   actorName     String
@@ -73,23 +114,40 @@ model AuditLog {
   // Forward-looking: no "actions by this actor" filter exists yet, but this
   // is the natural index for one when it's added.
   @@index([actorId, createdAt])
+  @@index([shopId, createdAt])
 }
 
 // name is NOT unique at the DB level: uniqueness is enforced only among
 // active rows, at the service layer (see category.service.ts). A plain
 // @unique here would permanently reserve a deactivated category's name,
 // which contradicts the soft-delete-only design (see Product's note below).
+// name is unique among active rows only, via a hand-written partial index
+// (Category_name_active_key, see the migrations directory) — Prisma's schema
+// DSL can't express partial unique indexes. This permits an inactive
+// (soft-deleted) category to keep its historical name while a new active
+// category reuses it.
 model Category {
-  id        String    @id @default(cuid())
+  id        String     @id @default(cuid())
+  shopId    String
+  shop      Shop       @relation(fields: [shopId], references: [id], onDelete: Restrict)
   name      String
-  sortOrder Int       @default(0)
-  isActive  Boolean   @default(true)
+  sortOrder Int        @default(0)
+  isActive  Boolean    @default(true)
   products  Product[]
-  createdAt DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+  // Optional self-relation so a category can be a sub-category of another
+  // top-level one (e.g. "Espresso" under "Coffee"). Null parentId means
+  // top-level. Only one level deep is used by the app today — nothing
+  // enforces that in the schema, it's just the only shape the UI builds.
+  parentId  String?
+  parent    Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children  Category[] @relation("CategoryHierarchy")
+  createdAt DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime   @updatedAt @db.Timestamptz(3)
 
   @@index([name])
   @@index([isActive])
+  @@index([parentId])
+  @@index([shopId])
 }
 
 // Prices are stored as integer cents everywhere in the catalog to avoid
@@ -104,13 +162,15 @@ model Category {
 // `price` is the full price for that size — basePrice is then unused by
 // ordering logic, not a base added to variant price.
 model Product {
-  id          String              @id @default(cuid())
+  id          String            @id @default(cuid())
+  shopId      String
+  shop        Shop              @relation(fields: [shopId], references: [id], onDelete: Restrict)
   categoryId  String
-  category    Category            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  category    Category          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   name        String
   description String?
   basePrice   Int
-  isActive    Boolean             @default(true)
+  isActive    Boolean           @default(true)
   // Admin-uploaded photo, served from this API's own /uploads static mount
   // (see product-image.service.ts). Null until an admin uploads one — the
   // frontend falls back to a name-matched stock photo, then a generic icon.
@@ -119,15 +179,17 @@ model Product {
   modifiers   ProductModifier[]
   inventory   InventoryItem?
   orderItems  OrderItem[]
-  createdAt   DateTime            @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime            @updatedAt @db.Timestamptz(3)
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime          @updatedAt @db.Timestamptz(3)
 
   @@index([categoryId])
   @@index([isActive])
+  @@index([shopId])
 }
 
-// [productId, name] is NOT unique at the DB level, for the same soft-delete
-// reason as Category.name — see service-layer enforcement in product.service.ts.
+// [productId, name] is unique among active rows only, via a hand-written
+// partial index (ProductVariant_productId_name_active_key) — same
+// soft-delete reasoning as Category.name above.
 model ProductVariant {
   id        String   @id @default(cuid())
   productId String
@@ -142,9 +204,13 @@ model ProductVariant {
   @@index([productId])
 }
 
-// name is NOT unique at the DB level — see Category.name above for why.
+// name is unique among active rows only, via a hand-written partial index
+// (Modifier_name_active_key) — same soft-delete reasoning as Category.name
+// above.
 model Modifier {
   id        String            @id @default(cuid())
+  shopId    String
+  shop      Shop              @relation(fields: [shopId], references: [id], onDelete: Restrict)
   name      String
   price     Int
   isActive  Boolean           @default(true)
@@ -154,6 +220,7 @@ model Modifier {
 
   @@index([name])
   @@index([isActive])
+  @@index([shopId])
 }
 
 // The join row itself carries no historical significance (unlike Product/
@@ -168,7 +235,6 @@ model ProductModifier {
   @@id([productId, modifierId])
   @@index([modifierId])
 }
-
 
 enum InventoryTransactionType {
   STOCK_IN
@@ -211,17 +277,22 @@ model InventoryItem {
 // a global unique would make the second product's deduction silently no-op
 // and report success without ever touching that product's stock.
 model InventoryTransaction {
-  id              String                    @id @default(cuid())
+  id              String                   @id @default(cuid())
+  // Denormalized (not just reachable via inventoryItem->product) because
+  // reports.service.ts's getInventoryMovementReport queries this table
+  // directly with raw SQL — Prisma's query-builder ownership checks don't
+  // apply to raw SQL, so the filter needs a column to reach directly.
+  shopId          String
   inventoryItemId String
-  inventoryItem   InventoryItem             @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
+  inventoryItem   InventoryItem            @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
   type            InventoryTransactionType
   quantityChange  Int
   quantityAfter   Int
   reason          String?
   idempotencyKey  String?
   createdByUserId String
-  createdBy       User                      @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
-  createdAt       DateTime                  @default(now()) @db.Timestamptz(3)
+  createdBy       User                     @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdAt       DateTime                 @default(now()) @db.Timestamptz(3)
 
   @@unique([inventoryItemId, idempotencyKey])
   @@index([inventoryItemId, createdAt])
@@ -230,8 +301,8 @@ model InventoryTransaction {
   // (and optionally by type), unlike the per-item index above.
   @@index([createdAt])
   @@index([type, createdAt])
+  @@index([shopId, createdAt])
 }
-
 
 enum PaymentMethod {
   CASH
@@ -248,12 +319,16 @@ enum DiscountType {
   FIXED
 }
 
-// name is NOT unique at the DB level — same soft-delete reasoning as
-// Category/Modifier. `value` is a percentage point (0-100) when type is
-// PERCENTAGE, or integer cents when type is FIXED. `expiresAt` is optional —
-// a discount with no expiry is valid indefinitely while isActive.
+// name is unique among active rows only, via a hand-written partial index
+// (Discount_name_active_key) — same soft-delete reasoning as
+// Category/Modifier/ProductVariant above. `value` is a percentage point
+// (0-100) when type is PERCENTAGE, or integer cents when type is FIXED.
+// `expiresAt` is optional — a discount with no expiry is valid indefinitely
+// while isActive.
 model Discount {
   id        String       @id @default(cuid())
+  shopId    String
+  shop      Shop         @relation(fields: [shopId], references: [id], onDelete: Restrict)
   name      String
   type      DiscountType
   value     Int
@@ -265,6 +340,7 @@ model Discount {
 
   @@index([name])
   @@index([isActive])
+  @@index([shopId])
 }
 
 // The financial record of a completed sale. subtotal/discountAmount/total
@@ -279,28 +355,46 @@ model Discount {
 // traditional POS systems — not a bug to "fix" by pre-checking availability
 // before allocating a number.
 model Order {
-  id             String      @id @default(cuid())
-  sequenceNumber Int         @unique @default(autoincrement())
-  cashierId      String
-  cashier        User        @relation(fields: [cashierId], references: [id], onDelete: Restrict)
-  status         OrderStatus @default(COMPLETED)
-  subtotal       Int
-  discountId     String?
+  id                   String      @id @default(cuid())
+  // Scoped per-shop (not a global Postgres SERIAL) so each shop's receipts
+  // read as a clean, gapless-per-shop sequence instead of interleaving with
+  // other shops' order numbers. Assigned by the app inside checkout's
+  // transaction from Shop.nextOrderSequence, under a FOR UPDATE lock on the
+  // Shop row — see checkout.service.ts. No DB default: the app always sets
+  // this explicitly.
+  sequenceNumber       Int
+  shopId               String
+  shop                 Shop        @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  cashierId            String
+  cashier              User        @relation(fields: [cashierId], references: [id], onDelete: Restrict)
+  status               OrderStatus @default(COMPLETED)
+  subtotal             Int
+  discountId           String?
   // Snapshots the discount's name at checkout time — same rationale as
   // OrderItem's *Snapshot fields. discountAmount alone preserves the
   // correct historical total, but without this the receipt's discount
   // *label* would silently follow a later rename, or go blank if the
   // discount is ever deleted (discountId -> SetNull).
   discountNameSnapshot String?
-  discount       Discount?   @relation(fields: [discountId], references: [id], onDelete: SetNull)
-  discountAmount Int         @default(0)
-  total          Int
-  notes          String?
-  idempotencyKey String      @unique
-  items          OrderItem[]
-  payment        Payment?
-  createdAt      DateTime    @default(now()) @db.Timestamptz(3)
+  discount             Discount?   @relation(fields: [discountId], references: [id], onDelete: SetNull)
+  discountAmount       Int         @default(0)
+  total                Int
+  notes                String?
+  idempotencyKey       String      @unique
+  items                OrderItem[]
+  payment              Payment?
+  createdAt            DateTime    @default(now()) @db.Timestamptz(3)
+  // Set together, only when status transitions COMPLETED -> CANCELLED or
+  // COMPLETED -> REFUNDED (admin-only, see order.service.ts's voidOrder).
+  // All three are null for the common case (a completed sale that was never
+  // reversed). onDelete: Restrict, same rationale as `cashier` above — the
+  // admin who voided a sale is part of its permanent history.
+  voidedAt             DateTime?   @db.Timestamptz(3)
+  voidedById           String?
+  voidedBy             User?       @relation("OrderVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
+  voidReason           String?
 
+  @@unique([shopId, sequenceNumber])
   @@index([cashierId, createdAt])
   @@index([discountId])
   // Dashboard/report queries scan across ALL cashiers by date range, so the
@@ -308,6 +402,7 @@ model Order {
   // cancelled/refunded-orders report's combined filter directly.
   @@index([createdAt])
   @@index([status, createdAt])
+  @@index([shopId, createdAt])
 }
 
 // Snapshots product/variant name and unit price at the moment of sale.
@@ -316,6 +411,11 @@ model Order {
 // so later price/name edits never alter a historical order.
 model OrderItem {
   id                  String              @id @default(cuid())
+  // Denormalized (not just reachable via order->shop) because
+  // reports.service.ts's getProductSalesReport/getCategorySalesReport query
+  // this table directly with raw SQL, which Prisma's query-builder
+  // ownership checks can't protect.
+  shopId              String
   orderId             String
   order               Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId           String
@@ -330,6 +430,7 @@ model OrderItem {
 
   @@index([orderId])
   @@index([productId])
+  @@index([shopId])
 }
 
 // Purely a snapshot row — no FK to the live Modifier catalog, deliberately,
@@ -348,6 +449,11 @@ model OrderItemModifier {
 // always server-validated/computed, never trusted from the client.
 model Payment {
   id             String        @id @default(cuid())
+  // Denormalized (not just reachable via order->shop) because
+  // reports.service.ts's getPaymentMethodReport queries this table
+  // directly with raw SQL, which Prisma's query-builder ownership checks
+  // can't protect.
+  shopId         String
   orderId        String        @unique
   order          Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
   method         PaymentMethod @default(CASH)
@@ -355,4 +461,6 @@ model Payment {
   amountReceived Int
   changeGiven    Int
   createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+
+  @@index([shopId])
 }

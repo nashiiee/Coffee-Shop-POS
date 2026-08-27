@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import request from 'supertest'
+import { Prisma } from '@prisma/client'
+
+function makeIdempotencyKeyConflict(): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed on the fields: (`idempotencyKey`)', {
+    code: 'P2002',
+    clientVersion: 'test',
+    meta: { target: ['idempotencyKey'] },
+  })
+}
 
 const orderFindUnique = vi.fn()
 const orderFindUniqueOrThrow = vi.fn()
@@ -12,6 +21,9 @@ const discountFindUnique = vi.fn()
 const inventoryItemUpdateMany = vi.fn()
 const inventoryItemFindUniqueOrThrow = vi.fn()
 const inventoryTransactionCreate = vi.fn()
+const shopFindUnique = vi.fn()
+const shopUpdate = vi.fn()
+const queryRaw = vi.fn()
 
 const mockPrisma = {
   order: { findUnique: orderFindUnique, findUniqueOrThrow: orderFindUniqueOrThrow, create: orderCreate },
@@ -22,6 +34,8 @@ const mockPrisma = {
   discount: { findUnique: discountFindUnique },
   inventoryItem: { updateMany: inventoryItemUpdateMany, findUniqueOrThrow: inventoryItemFindUniqueOrThrow },
   inventoryTransaction: { create: inventoryTransactionCreate },
+  shop: { findUnique: shopFindUnique, update: shopUpdate },
+  $queryRaw: queryRaw,
   $transaction: vi.fn((arg: unknown) =>
     typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(mockPrisma) : Promise.all(arg as Promise<unknown>[]),
   ),
@@ -33,8 +47,8 @@ const { createApp } = await import('../src/app.js')
 const { signAccessToken } = await import('../src/lib/jwt.js')
 
 const app = createApp()
-const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN' })
-const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER' })
+const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN', shopId: 'shop-1' })
+const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER', shopId: 'shop-1' })
 
 const category = { id: 'cat-1', name: 'Coffee' }
 
@@ -83,6 +97,9 @@ beforeEach(() => {
   inventoryItemUpdateMany.mockResolvedValue({ count: 1 })
   inventoryItemFindUniqueOrThrow.mockResolvedValue({ id: 'inv-1', productId: 'prod-latte', quantityOnHand: 10, reorderLevel: 2 })
   inventoryTransactionCreate.mockResolvedValue({ id: 'inv-txn-1' })
+  shopFindUnique.mockResolvedValue({ subscriptionStatus: 'ACTIVE' })
+  queryRaw.mockResolvedValue([{ nextOrderSequence: 1 }])
+  shopUpdate.mockResolvedValue({ id: 'shop-1', nextOrderSequence: 2 })
   mockPrisma.$transaction.mockImplementation((arg: unknown) =>
     typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(mockPrisma) : Promise.all(arg as Promise<unknown>[]),
   )
@@ -415,6 +432,24 @@ describe('POST /api/checkout — rejected requests never create records', () => 
     expect(res.status).toBe(400)
   })
 
+  it('rejects a variantId that does not match any active variant on the product', async () => {
+    // Distinct from the no-variantId case above: here the client supplies a
+    // variantId, but it doesn't resolve to any of this product's active
+    // variants (wrong product, deactivated variant, or fabricated id) — must
+    // never silently fall back to basePrice.
+    productFindUnique.mockResolvedValue(makeLatte())
+    const res = await request(app)
+      .post('/api/checkout')
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({
+        items: [{ productId: 'prod-latte', variantId: 'var-does-not-exist', modifierIds: [], quantity: 1 }],
+        amountReceived: 100000,
+        idempotencyKey: 'checkout-key-8c',
+      })
+    expect(res.status).toBe(400)
+    expect(orderCreate).not.toHaveBeenCalled()
+  })
+
   it('rejects a modifier that is not actually assigned to the product', async () => {
     productFindUnique.mockResolvedValue(makeLatte())
     const res = await request(app)
@@ -481,6 +516,50 @@ describe('POST /api/checkout — idempotency / duplicate protection', () => {
     expect(res.body.id).toBe('order-existing')
     expect(orderCreate).not.toHaveBeenCalled()
     expect(inventoryItemUpdateMany).not.toHaveBeenCalled()
+  })
+
+  it('returns the winning order — not a 500 — when a genuinely concurrent request loses the race inside the transaction', async () => {
+    // Distinct from the test above: here the pre-check (findByIdempotencyKey)
+    // finds nothing yet, because a truly concurrent second request is racing
+    // this one — both pass the pre-check before either commits. This
+    // request's own $transaction then hits the DB's unique constraint on
+    // idempotencyKey because the other request won and committed first. The
+    // service must recover by looking up and returning the winner's order,
+    // not surface a raw 500.
+    productFindUnique.mockResolvedValue({ ...makeLatte(), variants: [] })
+    const winnerOrder = { id: 'order-winner', sequenceNumber: 42, total: 40000 }
+    orderFindUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(winnerOrder)
+    mockPrisma.$transaction.mockRejectedValueOnce(makeIdempotencyKeyConflict())
+
+    const res = await request(app)
+      .post('/api/checkout')
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({
+        items: [{ productId: 'prod-latte', modifierIds: [], quantity: 1 }],
+        amountReceived: 40000,
+        idempotencyKey: 'racing-key',
+      })
+
+    expect(res.status).toBe(201)
+    expect(res.body.id).toBe('order-winner')
+    expect(orderFindUnique).toHaveBeenCalledTimes(2)
+  })
+
+  it('propagates a genuinely unexpected transaction error as a 500, not as a false idempotency recovery', async () => {
+    productFindUnique.mockResolvedValue({ ...makeLatte(), variants: [] })
+    orderFindUnique.mockResolvedValueOnce(null)
+    mockPrisma.$transaction.mockRejectedValueOnce(new Error('database connection lost'))
+
+    const res = await request(app)
+      .post('/api/checkout')
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({
+        items: [{ productId: 'prod-latte', modifierIds: [], quantity: 1 }],
+        amountReceived: 40000,
+        idempotencyKey: 'unrelated-failure-key',
+      })
+
+    expect(res.status).toBe(500)
   })
 })
 

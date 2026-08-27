@@ -7,6 +7,12 @@ export interface User {
   role: Role
 }
 
+export interface Shop {
+  id: string
+  name: string
+  logoUrl: string | null
+}
+
 export interface LoginRequest {
   email: string
   password: string
@@ -14,5 +20,6 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   user: User
+  shop: Shop
   accessToken: string
 }

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../auth/useAuth'
 import { ApiError } from '../../lib/apiClient'
 import { formatCents, formatOrderNumber } from '../../lib/money'
-import { ChartIcon } from '../admin/icons'
+import { dateStampedFilename, exportCsv, type CsvRow } from '../../lib/csv'
+import { ChartIcon, DownloadIcon } from '../admin/icons'
 import * as reportsApi from './api'
 import type {
   CancelledOrdersReport,
@@ -40,6 +41,97 @@ type ReportData =
   | { tab: 'cancelled-orders'; data: CancelledOrdersReport }
   | { tab: 'inventory-movement'; data: InventoryMovementReport }
 
+const REPORT_EXPORT_PAGE_SIZE = 100 // matches the server's max pageSize (see reports.schema.ts)
+
+// The paginated tabs only hold one page of rows in `result` — exporting
+// needs every row matching the date range, so this pages through as many
+// requests as it takes and concatenates them.
+async function fetchAllCancelledOrders(
+  accessToken: string | null,
+  range: reportsApi.DateRangeParams,
+): Promise<CancelledOrdersReport['orders']> {
+  const first = await reportsApi.getCancelledOrdersReport(accessToken, { ...range, page: 1, pageSize: REPORT_EXPORT_PAGE_SIZE })
+  const orders = [...first.orders]
+  const totalPages = Math.ceil(first.total / REPORT_EXPORT_PAGE_SIZE)
+  for (let page = 2; page <= totalPages; page++) {
+    const next = await reportsApi.getCancelledOrdersReport(accessToken, { ...range, page, pageSize: REPORT_EXPORT_PAGE_SIZE })
+    orders.push(...next.orders)
+  }
+  return orders
+}
+
+async function fetchAllInventoryMovements(
+  accessToken: string | null,
+  range: reportsApi.DateRangeParams,
+): Promise<InventoryMovementReport['transactions']> {
+  const first = await reportsApi.getInventoryMovementReport(accessToken, { ...range, page: 1, pageSize: REPORT_EXPORT_PAGE_SIZE })
+  const transactions = [...first.transactions]
+  const totalPages = Math.ceil(first.total / REPORT_EXPORT_PAGE_SIZE)
+  for (let page = 2; page <= totalPages; page++) {
+    const next = await reportsApi.getInventoryMovementReport(accessToken, { ...range, page, pageSize: REPORT_EXPORT_PAGE_SIZE })
+    transactions.push(...next.transactions)
+  }
+  return transactions
+}
+
+// Mirrors ReportTable's per-tab column choices below, as plain rows instead
+// of JSX — kept next to ReportTable so the two stay in sync by inspection.
+function buildReportCsvRows(result: ReportData): { headers: string[]; rows: CsvRow[] } {
+  if (result.tab === 'sales') {
+    return {
+      headers: ['Date', 'Orders', 'Sales', 'Discounts'],
+      rows: result.data.buckets.map((b) => [b.date, b.orderCount, formatCents(b.totalSales), formatCents(b.totalDiscounts)]),
+    }
+  }
+  if (result.tab === 'products') {
+    return {
+      headers: ['Product', 'Quantity Sold', 'Revenue'],
+      rows: result.data.products.map((p) => [p.name, p.quantitySold, formatCents(p.revenue)]),
+    }
+  }
+  if (result.tab === 'categories') {
+    return {
+      headers: ['Category', 'Quantity Sold', 'Revenue'],
+      rows: result.data.categories.map((c) => [c.name, c.quantitySold, formatCents(c.revenue)]),
+    }
+  }
+  if (result.tab === 'cashiers') {
+    return {
+      headers: ['Cashier', 'Orders', 'Revenue'],
+      rows: result.data.cashiers.map((c) => [c.name, c.orderCount, formatCents(c.revenue)]),
+    }
+  }
+  if (result.tab === 'payment-methods') {
+    return {
+      headers: ['Method', 'Orders', 'Revenue'],
+      rows: result.data.methods.map((m) => [m.method, m.orderCount, formatCents(m.revenue)]),
+    }
+  }
+  if (result.tab === 'discounts') {
+    return {
+      headers: ['Discount', 'Times Used', 'Total Discounted'],
+      rows: result.data.discounts.map((d) => [d.name, d.timesUsed, formatCents(d.totalDiscounted)]),
+    }
+  }
+  if (result.tab === 'cancelled-orders') {
+    return {
+      headers: ['Order', 'Status', 'Cashier', 'Total', 'Date'],
+      rows: result.data.orders.map((o) => [
+        formatOrderNumber(o.sequenceNumber),
+        o.status,
+        o.cashier.name,
+        formatCents(o.total),
+        new Date(o.createdAt).toLocaleString(),
+      ]),
+    }
+  }
+  // inventory-movement
+  return {
+    headers: ['Product', 'Type', 'Change', 'Balance After', 'Reason', 'By'],
+    rows: result.data.transactions.map((t) => [t.productName, t.type, t.quantityChange, t.quantityAfter, t.reason ?? '', t.createdByName]),
+  }
+}
+
 export function ReportsPage() {
   const { accessToken } = useAuth()
   const [activeTab, setActiveTab] = useState<ReportTab>('sales')
@@ -50,10 +142,35 @@ export function ReportsPage() {
   const [result, setResult] = useState<ReportData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isExporting, setIsExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   function handleTabChange(tab: ReportTab) {
     setActiveTab(tab)
     setPage(1)
+  }
+
+  async function handleExport() {
+    if (!result) return
+    setIsExporting(true)
+    setExportError(null)
+    try {
+      const range = { dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }
+      let exportData = result
+      if (result.tab === 'cancelled-orders') {
+        const orders = await fetchAllCancelledOrders(accessToken, range)
+        exportData = { tab: 'cancelled-orders', data: { ...result.data, orders } }
+      } else if (result.tab === 'inventory-movement') {
+        const transactions = await fetchAllInventoryMovements(accessToken, range)
+        exportData = { tab: 'inventory-movement', data: { ...result.data, transactions } }
+      }
+      const { headers, rows } = buildReportCsvRows(exportData)
+      exportCsv(dateStampedFilename(`report-${activeTab}`), headers, rows)
+    } catch (err: unknown) {
+      setExportError(err instanceof ApiError ? err.message : 'Failed to export report')
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   useEffect(() => {
@@ -167,7 +284,22 @@ export function ReportsPage() {
             className={inputClasses}
           />
         </label>
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={!result || isExporting}
+          className="ml-auto flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-40"
+        >
+          <DownloadIcon />
+          {isExporting ? 'Exporting…' : 'Export CSV'}
+        </button>
       </div>
+
+      {exportError ? (
+        <p role="alert" className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600">
+          {exportError}
+        </p>
+      ) : null}
 
       {error ? (
         <p role="alert" className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600">

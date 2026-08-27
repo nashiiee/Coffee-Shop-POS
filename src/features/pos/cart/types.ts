@@ -18,6 +18,7 @@ export interface CartLineItem {
 export interface CartState {
   items: CartLineItem[]
   notes: string
+  discountId: string | null
 }
 
 export interface AddItemPayload {

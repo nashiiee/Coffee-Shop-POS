@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { useAuth } from '../auth/useAuth'
 import { ApiError } from '../../lib/apiClient'
+import { dateStampedFilename, exportCsv } from '../../lib/csv'
+import { DownloadIcon } from '../admin/icons'
 import * as inventoryApi from './api'
 import type { InventoryTransaction } from './types'
 
@@ -31,13 +33,37 @@ export function InventoryHistoryPage() {
     }
   }, [accessToken, productId])
 
+  function handleExport() {
+    const headers = ['When', 'Type', 'Change', 'Balance After', 'Reason', 'By']
+    const rows = transactions.map((txn) => [
+      new Date(txn.createdAt).toLocaleString(),
+      txn.type,
+      txn.quantityChange,
+      txn.quantityAfter,
+      txn.reason ?? '',
+      txn.createdBy.name,
+    ])
+    exportCsv(dateStampedFilename('inventory-history'), headers, rows)
+  }
+
   return (
     <section>
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-xl font-semibold">Inventory history</h2>
-        <Link to="/admin/inventory" className="text-sm underline">
-          Back to inventory
-        </Link>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={transactions.length === 0}
+            className="flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-40"
+          >
+            <DownloadIcon />
+            Export CSV
+          </button>
+          <Link to="/admin/inventory" className="text-sm underline">
+            Back to inventory
+          </Link>
+        </div>
       </div>
       {error ? <p role="alert" className="mb-3 text-red-600">{error}</p> : null}
 

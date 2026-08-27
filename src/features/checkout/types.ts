@@ -44,6 +44,9 @@ export interface OrderRecord {
   discount: Discount | null
   items: OrderItemRecord[]
   payment: PaymentRecord
+  voidedAt: string | null
+  voidedBy: { id: string; name: string } | null
+  voidReason: string | null
 }
 
 export interface CheckoutItemPayload {

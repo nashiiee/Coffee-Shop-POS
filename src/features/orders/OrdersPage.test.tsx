@@ -16,7 +16,7 @@ const admin: User = { id: 'admin-1', name: 'Admin', email: 'a@x.com', role: 'ADM
 function renderPage(user: User, basePath?: string) {
   return render(
     <MemoryRouter>
-      <AuthContext.Provider value={{ user, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
+      <AuthContext.Provider value={{ user, shop: null, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
         <OrdersPage basePath={basePath} />
       </AuthContext.Provider>
     </MemoryRouter>,
@@ -127,6 +127,42 @@ describe('OrdersPage — basePath', () => {
     renderPage(cashier)
     await screen.findByText('#000007')
     expect(screen.getByRole('link', { name: 'View receipt for order #000007' })).toHaveAttribute('href', '/orders/order-1')
+  })
+})
+
+describe('OrdersPage — export', () => {
+  it('exports every matching order across pages, not just the page on screen', async () => {
+    URL.createObjectURL = vi.fn().mockReturnValue('blob:mock')
+    URL.revokeObjectURL = vi.fn()
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    const page1 = {
+      orders: Array.from({ length: 100 }, (_, i) => ({ ...sampleResult.orders[0]!, id: `order-${i}`, sequenceNumber: i + 1 })),
+      total: 150,
+      page: 1,
+      pageSize: 100,
+    }
+    const page2 = {
+      orders: Array.from({ length: 50 }, (_, i) => ({ ...sampleResult.orders[0]!, id: `order-${100 + i}`, sequenceNumber: 101 + i })),
+      total: 150,
+      page: 2,
+      pageSize: 100,
+    }
+    vi.mocked(ordersApi.listOrders).mockImplementation((_token, filters) =>
+      Promise.resolve(filters.page === 2 ? page2 : page1),
+    )
+
+    renderPage(admin)
+    const exportButton = await screen.findByRole('button', { name: /export/i })
+    await waitFor(() => expect(exportButton).not.toBeDisabled())
+
+    await userEvent.click(exportButton)
+
+    await waitFor(() => expect(clickSpy).toHaveBeenCalled())
+    expect(ordersApi.listOrders).toHaveBeenCalledWith('token', expect.objectContaining({ page: 1, pageSize: 100 }))
+    expect(ordersApi.listOrders).toHaveBeenCalledWith('token', expect.objectContaining({ page: 2, pageSize: 100 }))
+
+    clickSpy.mockRestore()
   })
 })
 

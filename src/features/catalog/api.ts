@@ -3,8 +3,9 @@ import type { Category, Modifier, Product, ProductVariant } from './types'
 
 type Token = string | null
 
-export function listCategories(accessToken: Token) {
-  return apiRequest<Category[]>('/api/categories', { accessToken })
+export function listCategories(accessToken: Token, options: { activeOnly?: boolean } = {}) {
+  const query = options.activeOnly ? '?activeOnly=true' : ''
+  return apiRequest<Category[]>(`/api/categories${query}`, { accessToken })
 }
 
 export function createCategory(accessToken: Token, data: { name: string }) {

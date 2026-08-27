@@ -5,6 +5,7 @@ import { ApiError } from '../../lib/apiClient'
 import { formatCents } from '../../lib/money'
 import { resolveProductImage } from '../../lib/productImages'
 import { CupIcon, PowerIcon, TrashIcon } from '../admin/icons'
+import { ConfirmDialog } from '../pos/ConfirmDialog'
 import * as catalogApi from './api'
 import type { Product } from './types'
 
@@ -88,6 +89,7 @@ export function ProductsPage() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<Product | null>(null)
 
   async function toggleActive(product: Product) {
     setError(null)
@@ -102,8 +104,10 @@ export function ProductsPage() {
     }
   }
 
-  async function deleteProduct(product: Product) {
-    if (!window.confirm(`Delete "${product.name}"? This cannot be undone.`)) return
+  async function confirmDelete() {
+    const product = pendingDelete
+    if (!product) return
+    setPendingDelete(null)
     setError(null)
     setBusyId(product.id)
     try {
@@ -167,12 +171,22 @@ export function ProductsPage() {
               key={product.id}
               product={product}
               onToggleActive={(p) => void toggleActive(p)}
-              onDelete={(p) => void deleteProduct(p)}
+              onDelete={setPendingDelete}
               isBusy={busyId === product.id}
             />
           ))}
         </div>
       )}
+
+      {pendingDelete ? (
+        <ConfirmDialog
+          title="Delete product?"
+          message={`Delete "${pendingDelete.name}"? This cannot be undone.`}
+          confirmLabel="Delete"
+          onConfirm={() => void confirmDelete()}
+          onCancel={() => setPendingDelete(null)}
+        />
+      ) : null}
     </section>
   )
 }

@@ -12,7 +12,7 @@ const admin: User = { id: 'admin-1', name: 'Admin', email: 'a@x.com', role: 'ADM
 
 function renderPage() {
   return render(
-    <AuthContext.Provider value={{ user: admin, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
+    <AuthContext.Provider value={{ user: admin, shop: null, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
       <ReportsPage />
     </AuthContext.Provider>,
   )
@@ -88,6 +88,40 @@ describe('ReportsPage — pagination', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Next' }))
 
     await waitFor(() => expect(reportsApi.getCancelledOrdersReport).toHaveBeenLastCalledWith('token', expect.objectContaining({ page: 2 })))
+  })
+})
+
+describe('ReportsPage — export', () => {
+  it('exports the current tab as CSV', async () => {
+    URL.createObjectURL = vi.fn().mockReturnValue('blob:mock')
+    URL.revokeObjectURL = vi.fn()
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    renderPage()
+    await screen.findByText('2026-01-15')
+
+    await userEvent.click(screen.getByRole('button', { name: /export/i }))
+
+    await waitFor(() => expect(clickSpy).toHaveBeenCalled())
+    clickSpy.mockRestore()
+  })
+
+  it('fetches every page of a paginated report before exporting it', async () => {
+    URL.createObjectURL = vi.fn().mockReturnValue('blob:mock')
+    URL.revokeObjectURL = vi.fn()
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    renderPage()
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelled Orders' }))
+    await screen.findByText('Page 1 of 3')
+
+    await userEvent.click(screen.getByRole('button', { name: /export/i }))
+
+    await waitFor(() => expect(clickSpy).toHaveBeenCalled())
+    // The visible table paged with pageSize 20; the export re-fetches with
+    // the server's max pageSize (100) so it isn't limited to one page.
+    expect(reportsApi.getCancelledOrdersReport).toHaveBeenCalledWith('token', expect.objectContaining({ pageSize: 100 }))
+    clickSpy.mockRestore()
   })
 })
 

@@ -3,6 +3,7 @@ export interface Category {
   name: string
   sortOrder: number
   isActive: boolean
+  parentId: string | null
 }
 
 export interface ProductVariant {

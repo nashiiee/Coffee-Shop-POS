@@ -41,7 +41,7 @@ interface SalesBucketRow {
   orderCount: bigint
 }
 
-export async function getSalesReport(query: SalesReportQuery) {
+export async function getSalesReport(query: SalesReportQuery, shopId: string) {
   const { unit, dateFrom, dateTo } = resolveSalesRange(query)
   // date_trunc's unit is bound as a parameter (not string-interpolated),
   // so this stays injection-safe even though it's dynamic; the zod enum
@@ -59,7 +59,7 @@ export async function getSalesReport(query: SalesReportQuery) {
            COALESCE(SUM("discountAmount"), 0)::bigint AS "totalDiscounts",
            COUNT(*)::bigint AS "orderCount"
     FROM "Order"
-    WHERE status = 'COMPLETED' AND "createdAt" >= ${dateFrom} AND "createdAt" < ${dateTo}
+    WHERE status = 'COMPLETED' AND "createdAt" >= ${dateFrom} AND "createdAt" < ${dateTo} AND "shopId" = ${shopId}
     GROUP BY bucket
     ORDER BY bucket
   `
@@ -88,15 +88,17 @@ interface ProductSalesRow {
 // actually shown to customers, matching this app's snapshot-preserves-
 // history principle rather than silently merging them under whichever name
 // is current now.
-export async function getProductSalesReport(query: DateRangeQuery) {
+export async function getProductSalesReport(query: DateRangeQuery, shopId: string) {
   const { dateFrom, dateTo } = resolveDefaultRange(query)
+  // OrderItem carries its own denormalized shopId column, so filter on it
+  // directly rather than only on the joined Order.
   const rows = await prisma.$queryRaw<ProductSalesRow[]>`
     SELECT oi."productId", oi."productNameSnapshot" AS name,
            SUM(oi."lineSubtotal")::bigint AS revenue,
            SUM(oi.quantity)::bigint AS "quantitySold"
     FROM "OrderItem" oi
     JOIN "Order" o ON o.id = oi."orderId"
-    WHERE o.status = 'COMPLETED' AND o."createdAt" >= ${dateFrom} AND o."createdAt" < ${dateTo}
+    WHERE o.status = 'COMPLETED' AND o."createdAt" >= ${dateFrom} AND o."createdAt" < ${dateTo} AND oi."shopId" = ${shopId}
     GROUP BY oi."productId", oi."productNameSnapshot"
     ORDER BY revenue DESC
   `
@@ -119,7 +121,7 @@ interface CategorySalesRow {
   quantitySold: bigint
 }
 
-export async function getCategorySalesReport(query: DateRangeQuery) {
+export async function getCategorySalesReport(query: DateRangeQuery, shopId: string) {
   const { dateFrom, dateTo } = resolveDefaultRange(query)
   // Unlike product sales, there is no categoryNameSnapshot on OrderItem —
   // this joins the LIVE Category table, so a product moved to a different
@@ -127,6 +129,8 @@ export async function getCategorySalesReport(query: DateRangeQuery) {
   // one it was in at sale time. Category reassignment is rare enough that
   // this is an accepted, documented tradeoff rather than adding a snapshot
   // column for it.
+  // OrderItem carries its own denormalized shopId column, so filter on it
+  // directly rather than only on the joined Order/Product/Category.
   const rows = await prisma.$queryRaw<CategorySalesRow[]>`
     SELECT c.id AS "categoryId", c.name AS "categoryName",
            COALESCE(SUM(oi."lineSubtotal"), 0)::bigint AS revenue,
@@ -135,7 +139,7 @@ export async function getCategorySalesReport(query: DateRangeQuery) {
     JOIN "Order" o ON o.id = oi."orderId"
     JOIN "Product" p ON p.id = oi."productId"
     JOIN "Category" c ON c.id = p."categoryId"
-    WHERE o.status = 'COMPLETED' AND o."createdAt" >= ${dateFrom} AND o."createdAt" < ${dateTo}
+    WHERE o.status = 'COMPLETED' AND o."createdAt" >= ${dateFrom} AND o."createdAt" < ${dateTo} AND oi."shopId" = ${shopId}
     GROUP BY c.id, c.name
     ORDER BY revenue DESC
   `
@@ -158,7 +162,7 @@ interface CashierSalesRow {
   orderCount: bigint
 }
 
-export async function getCashierSalesReport(query: DateRangeQuery) {
+export async function getCashierSalesReport(query: DateRangeQuery, shopId: string) {
   const { dateFrom, dateTo } = resolveDefaultRange(query)
   const rows = await prisma.$queryRaw<CashierSalesRow[]>`
     SELECT o."cashierId", u.name AS "cashierName",
@@ -166,7 +170,7 @@ export async function getCashierSalesReport(query: DateRangeQuery) {
            COUNT(*)::bigint AS "orderCount"
     FROM "Order" o
     JOIN "User" u ON u.id = o."cashierId"
-    WHERE o.status = 'COMPLETED' AND o."createdAt" >= ${dateFrom} AND o."createdAt" < ${dateTo}
+    WHERE o.status = 'COMPLETED' AND o."createdAt" >= ${dateFrom} AND o."createdAt" < ${dateTo} AND o."shopId" = ${shopId}
     GROUP BY o."cashierId", u.name
     ORDER BY revenue DESC
   `
@@ -188,15 +192,17 @@ interface PaymentMethodRow {
   orderCount: bigint
 }
 
-export async function getPaymentMethodReport(query: DateRangeQuery) {
+export async function getPaymentMethodReport(query: DateRangeQuery, shopId: string) {
   const { dateFrom, dateTo } = resolveDefaultRange(query)
+  // Payment carries its own denormalized shopId column, so filter on it
+  // directly rather than only on the joined Order.
   const rows = await prisma.$queryRaw<PaymentMethodRow[]>`
     SELECT p.method,
            SUM(p."amountDue")::bigint AS revenue,
            COUNT(*)::bigint AS "orderCount"
     FROM "Payment" p
     JOIN "Order" o ON o.id = p."orderId"
-    WHERE o.status = 'COMPLETED' AND o."createdAt" >= ${dateFrom} AND o."createdAt" < ${dateTo}
+    WHERE o.status = 'COMPLETED' AND o."createdAt" >= ${dateFrom} AND o."createdAt" < ${dateTo} AND p."shopId" = ${shopId}
     GROUP BY p.method
     ORDER BY revenue DESC
   `
@@ -213,7 +219,7 @@ interface DiscountUsageRow {
   timesUsed: bigint
 }
 
-export async function getDiscountsReport(query: DateRangeQuery) {
+export async function getDiscountsReport(query: DateRangeQuery, shopId: string) {
   const { dateFrom, dateTo } = resolveDefaultRange(query)
   const rows = await prisma.$queryRaw<DiscountUsageRow[]>`
     SELECT o."discountNameSnapshot" AS name,
@@ -221,7 +227,7 @@ export async function getDiscountsReport(query: DateRangeQuery) {
            COUNT(*)::bigint AS "timesUsed"
     FROM "Order" o
     WHERE o.status = 'COMPLETED' AND o."discountId" IS NOT NULL
-      AND o."createdAt" >= ${dateFrom} AND o."createdAt" < ${dateTo}
+      AND o."createdAt" >= ${dateFrom} AND o."createdAt" < ${dateTo} AND o."shopId" = ${shopId}
     GROUP BY o."discountNameSnapshot"
     ORDER BY "totalDiscounted" DESC
   `
@@ -236,9 +242,10 @@ export async function getDiscountsReport(query: DateRangeQuery) {
   }
 }
 
-export async function getCancelledOrdersReport(query: CancelledOrdersQuery) {
+export async function getCancelledOrdersReport(query: CancelledOrdersQuery, shopId: string) {
   const { dateFrom, dateTo } = resolveDefaultRange(query)
   const where = {
+    shopId,
     status: { in: ['CANCELLED', 'REFUNDED'] as ('CANCELLED' | 'REFUNDED')[] },
     createdAt: { gte: dateFrom, lt: dateTo },
   }
@@ -263,9 +270,11 @@ export async function getCancelledOrdersReport(query: CancelledOrdersQuery) {
   return { dateFrom, dateTo, orders, total, page: query.page, pageSize: query.pageSize }
 }
 
-export async function getInventoryMovementReport(query: InventoryMovementQuery) {
+export async function getInventoryMovementReport(query: InventoryMovementQuery, shopId: string) {
   const { dateFrom, dateTo } = resolveDefaultRange(query)
+  // InventoryTransaction carries its own denormalized shopId column.
   const where = {
+    shopId,
     createdAt: { gte: dateFrom, lt: dateTo },
     ...(query.type ? { type: query.type } : {}),
   }

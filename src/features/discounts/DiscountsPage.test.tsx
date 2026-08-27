@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DiscountsPage } from './DiscountsPage'
 import { AuthContext } from '../auth/authContext'
+import { ToastProvider } from '../admin/ToastProvider'
 import * as discountsApi from './api'
 import type { User } from '../auth/types'
 import type { Discount } from './types'
@@ -13,8 +14,10 @@ const admin: User = { id: 'admin-1', name: 'Admin', email: 'a@x.com', role: 'ADM
 
 function renderPage() {
   return render(
-    <AuthContext.Provider value={{ user: admin, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
-      <DiscountsPage />
+    <AuthContext.Provider value={{ user: admin, shop: null, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
+      <ToastProvider>
+        <DiscountsPage />
+      </ToastProvider>
     </AuthContext.Provider>,
   )
 }
@@ -36,7 +39,7 @@ describe('DiscountsPage — listing', () => {
   it('shows inactive discounts with a status label', async () => {
     vi.mocked(discountsApi.listDiscounts).mockResolvedValue([{ ...tenPercentOff, isActive: false }])
     renderPage()
-    expect(await screen.findByText('(inactive)')).toBeInTheDocument()
+    expect(await screen.findByText('Inactive')).toBeInTheDocument()
   })
 })
 
@@ -49,15 +52,20 @@ describe('DiscountsPage — create', () => {
     renderPage()
     await screen.findByText(/10% Off/)
 
-    await userEvent.type(screen.getByLabelText('Discount name'), 'New Promo')
-    await userEvent.selectOptions(screen.getByLabelText('Discount type'), 'PERCENTAGE')
-    await userEvent.type(screen.getByLabelText('Discount value'), '15')
     await userEvent.click(screen.getByRole('button', { name: 'Add discount' }))
+    const dialog = screen.getByRole('dialog')
+    await userEvent.type(within(dialog).getByLabelText('Discount name'), 'New Promo')
+    await userEvent.selectOptions(within(dialog).getByLabelText('Discount type'), 'PERCENTAGE')
+    await userEvent.type(within(dialog).getByLabelText('Discount value'), '15')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add discount' }))
 
     await waitFor(() =>
       expect(discountsApi.createDiscount).toHaveBeenCalledWith('token', { name: 'New Promo', type: 'PERCENTAGE', value: 15 }),
     )
-    expect(await screen.findByText(/New Promo/)).toBeInTheDocument()
+    // Scoped to the card's name element — a plain /New Promo/ text query now
+    // also matches the success toast ("Discount \"New Promo\" added"),
+    // which would make the query ambiguous.
+    expect(await screen.findByText('New Promo', { selector: 'p' })).toBeInTheDocument()
   })
 
   it('creates a fixed-amount discount, converting dollars to cents', async () => {
@@ -67,10 +75,12 @@ describe('DiscountsPage — create', () => {
     renderPage()
     await screen.findByText(/10% Off/)
 
-    await userEvent.type(screen.getByLabelText('Discount name'), '₱50 Off')
-    await userEvent.selectOptions(screen.getByLabelText('Discount type'), 'FIXED')
-    await userEvent.type(screen.getByLabelText('Discount value'), '50')
     await userEvent.click(screen.getByRole('button', { name: 'Add discount' }))
+    const dialog = screen.getByRole('dialog')
+    await userEvent.type(within(dialog).getByLabelText('Discount name'), '₱50 Off')
+    await userEvent.selectOptions(within(dialog).getByLabelText('Discount type'), 'FIXED')
+    await userEvent.type(within(dialog).getByLabelText('Discount value'), '50')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add discount' }))
 
     await waitFor(() =>
       expect(discountsApi.createDiscount).toHaveBeenCalledWith('token', { name: '₱50 Off', type: 'FIXED', value: 5000 }),
@@ -83,10 +93,12 @@ describe('DiscountsPage — create', () => {
     renderPage()
     await screen.findByText(/10% Off/)
 
-    await userEvent.type(screen.getByLabelText('Discount name'), 'Holiday Promo')
-    await userEvent.type(screen.getByLabelText('Discount value'), '20')
-    await userEvent.type(screen.getByLabelText('Discount expiry date'), '2026-12-31')
     await userEvent.click(screen.getByRole('button', { name: 'Add discount' }))
+    const dialog = screen.getByRole('dialog')
+    await userEvent.type(within(dialog).getByLabelText('Discount name'), 'Holiday Promo')
+    await userEvent.type(within(dialog).getByLabelText('Discount value'), '20')
+    await userEvent.type(within(dialog).getByLabelText('Discount expiry date'), '2026-12-31')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add discount' }))
 
     await waitFor(() =>
       expect(discountsApi.createDiscount).toHaveBeenCalledWith(
@@ -105,9 +117,11 @@ describe('DiscountsPage — create', () => {
     renderPage()
     await screen.findByText(/10% Off/)
 
-    await userEvent.type(screen.getByLabelText('Discount name'), 'Too Much')
-    await userEvent.type(screen.getByLabelText('Discount value'), '150')
     await userEvent.click(screen.getByRole('button', { name: 'Add discount' }))
+    const dialog = screen.getByRole('dialog')
+    await userEvent.type(within(dialog).getByLabelText('Discount name'), 'Too Much')
+    await userEvent.type(within(dialog).getByLabelText('Discount value'), '150')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add discount' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('A percentage discount value cannot exceed 100')
   })

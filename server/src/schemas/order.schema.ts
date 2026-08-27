@@ -13,3 +13,9 @@ export const listOrdersQuerySchema = z.object({
 })
 
 export type ListOrdersQuery = z.infer<typeof listOrdersQuerySchema>
+
+export const voidOrderSchema = z.object({
+  reason: z.string().trim().min(3, 'A reason of at least 3 characters is required').max(500),
+})
+
+export type VoidOrderInput = z.infer<typeof voidOrderSchema>

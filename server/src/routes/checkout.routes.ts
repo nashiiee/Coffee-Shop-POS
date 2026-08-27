@@ -1,7 +1,6 @@
 import { Router } from 'express'
 import rateLimit from 'express-rate-limit'
-import { authenticate } from '../middleware/authenticate.js'
-import { authorize } from '../middleware/authorize.js'
+import { requireAuth } from '../middleware/requireAuth.js'
 import { validate } from '../middleware/validate.js'
 import { checkoutSchema } from '../schemas/checkout.schema.js'
 import { checkoutHandler } from '../controllers/checkout.controller.js'
@@ -19,8 +18,7 @@ const checkoutRateLimit = rateLimit({
 
 checkoutRouter.post(
   '/',
-  authenticate,
-  authorize('ADMIN', 'CASHIER'),
+  ...requireAuth('ADMIN', 'CASHIER'),
   checkoutRateLimit,
   validate(checkoutSchema),
   checkoutHandler,

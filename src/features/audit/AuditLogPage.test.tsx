@@ -13,7 +13,7 @@ const admin: User = { id: 'admin-1', name: 'Admin', email: 'a@x.com', role: 'ADM
 
 function renderPage() {
   return render(
-    <AuthContext.Provider value={{ user: admin, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
+    <AuthContext.Provider value={{ user: admin, shop: null, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
       <AuditLogPage />
     </AuthContext.Provider>,
   )
@@ -85,5 +85,19 @@ describe('AuditLogPage', () => {
     vi.mocked(auditApi.listAuditLogs).mockResolvedValue({ logs: [], total: 0, page: 1, pageSize: 20 })
     renderPage()
     expect(await screen.findByText('No matching audit entries.')).toBeInTheDocument()
+  })
+
+  it('exports the matching entries as CSV', async () => {
+    URL.createObjectURL = vi.fn().mockReturnValue('blob:mock')
+    URL.revokeObjectURL = vi.fn()
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    renderPage()
+    await screen.findByText('Admin')
+
+    await userEvent.click(screen.getByRole('button', { name: /export/i }))
+
+    await waitFor(() => expect(clickSpy).toHaveBeenCalled())
+    clickSpy.mockRestore()
   })
 })

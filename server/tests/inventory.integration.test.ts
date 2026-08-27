@@ -3,6 +3,7 @@ import request from 'supertest'
 
 const inventoryItemFindMany = vi.fn()
 const inventoryItemFindUnique = vi.fn()
+const inventoryItemFindFirst = vi.fn()
 const inventoryItemFindUniqueOrThrow = vi.fn()
 const inventoryItemUpdate = vi.fn()
 const inventoryItemUpdateMany = vi.fn()
@@ -11,11 +12,13 @@ const inventoryTransactionCreate = vi.fn()
 const inventoryTransactionFindMany = vi.fn()
 const userFindUnique = vi.fn()
 const auditLogCreate = vi.fn()
+const shopFindUnique = vi.fn()
 
 const mockPrisma = {
   inventoryItem: {
     findMany: inventoryItemFindMany,
     findUnique: inventoryItemFindUnique,
+    findFirst: inventoryItemFindFirst,
     findUniqueOrThrow: inventoryItemFindUniqueOrThrow,
     update: inventoryItemUpdate,
     updateMany: inventoryItemUpdateMany,
@@ -27,6 +30,7 @@ const mockPrisma = {
   },
   user: { findUnique: userFindUnique },
   auditLog: { create: auditLogCreate },
+  shop: { findUnique: shopFindUnique },
   $transaction: vi.fn((arg: unknown) =>
     typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(mockPrisma) : Promise.all(arg as Promise<unknown>[]),
   ),
@@ -38,8 +42,8 @@ const { createApp } = await import('../src/app.js')
 const { signAccessToken } = await import('../src/lib/jwt.js')
 
 const app = createApp()
-const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN' })
-const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER' })
+const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN', shopId: 'shop-1' })
+const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER', shopId: 'shop-1' })
 
 const product = { id: 'prod-1', name: 'Latte', isActive: true }
 const baseItem = { id: 'inv-1', productId: 'prod-1', quantityOnHand: 10, reorderLevel: 5, product }
@@ -47,6 +51,7 @@ const baseItem = { id: 'inv-1', productId: 'prod-1', quantityOnHand: 10, reorder
 beforeEach(() => {
   vi.clearAllMocks()
   userFindUnique.mockResolvedValue({ name: 'Admin' })
+  shopFindUnique.mockResolvedValue({ subscriptionStatus: 'ACTIVE' })
   mockPrisma.$transaction.mockImplementation((arg: unknown) =>
     typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(mockPrisma) : Promise.all(arg as Promise<unknown>[]),
   )
@@ -72,7 +77,7 @@ describe('GET /api/inventory', () => {
 
 describe('GET /api/inventory/:productId', () => {
   it('404s for a product with no inventory record', async () => {
-    inventoryItemFindUnique.mockResolvedValue(null)
+    inventoryItemFindFirst.mockResolvedValue(null)
     const res = await request(app).get('/api/inventory/no-such-product').set('Authorization', `Bearer ${cashierToken}`)
     expect(res.status).toBe(404)
   })
@@ -80,7 +85,7 @@ describe('GET /api/inventory/:productId', () => {
 
 describe('PATCH /api/inventory/:productId (reorder level)', () => {
   it('allows an admin to configure the reorder level', async () => {
-    inventoryItemFindUnique.mockResolvedValue(baseItem)
+    inventoryItemFindFirst.mockResolvedValue(baseItem)
     inventoryItemUpdate.mockResolvedValue({ ...baseItem, reorderLevel: 8 })
     const res = await request(app)
       .patch('/api/inventory/prod-1')
@@ -105,7 +110,7 @@ describe('PATCH /api/inventory/:productId (reorder level)', () => {
 
 describe('GET /api/inventory/:productId/history', () => {
   it('allows an admin to view inventory history', async () => {
-    inventoryItemFindUnique.mockResolvedValue(baseItem)
+    inventoryItemFindFirst.mockResolvedValue(baseItem)
     inventoryTransactionFindMany.mockResolvedValue([
       { id: 'txn-1', type: 'STOCK_IN', quantityChange: 10, quantityAfter: 10 },
     ])
@@ -147,7 +152,7 @@ describe('POST /api/inventory/:productId/adjustments', () => {
   })
 
   it('404s when adjusting inventory for a product with no inventory record', async () => {
-    inventoryItemFindUnique.mockResolvedValue(null)
+    inventoryItemFindFirst.mockResolvedValue(null)
     const res = await request(app)
       .post('/api/inventory/no-such-product/adjustments')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -156,7 +161,7 @@ describe('POST /api/inventory/:productId/adjustments', () => {
   })
 
   it('allows an admin to record stock in and creates an audit transaction', async () => {
-    inventoryItemFindUnique.mockResolvedValue(baseItem)
+    inventoryItemFindFirst.mockResolvedValue(baseItem)
     inventoryItemUpdateMany.mockResolvedValue({ count: 1 })
     inventoryItemFindUniqueOrThrow.mockResolvedValue({ ...baseItem, quantityOnHand: 20 })
     inventoryTransactionCreate.mockResolvedValue({
@@ -186,7 +191,7 @@ describe('POST /api/inventory/:productId/adjustments', () => {
   })
 
   it('rejects a stock-out that would push inventory negative (concurrency-safe conditional update)', async () => {
-    inventoryItemFindUnique.mockResolvedValue(baseItem)
+    inventoryItemFindFirst.mockResolvedValue(baseItem)
     inventoryItemUpdateMany.mockResolvedValue({ count: 0 })
 
     const res = await request(app)
@@ -204,7 +209,7 @@ describe('POST /api/inventory/:productId/adjustments', () => {
   })
 
   it('does not double-apply a repeated request carrying the same idempotencyKey', async () => {
-    inventoryItemFindUnique.mockResolvedValue(baseItem)
+    inventoryItemFindFirst.mockResolvedValue(baseItem)
     const existingTransaction = {
       id: 'txn-existing',
       type: 'STOCK_IN',
@@ -227,7 +232,7 @@ describe('POST /api/inventory/:productId/adjustments', () => {
 
   it('returns the winning transaction when a concurrent request already committed under the same idempotencyKey', async () => {
     const { Prisma } = await import('@prisma/client')
-    inventoryItemFindUnique.mockResolvedValue(baseItem)
+    inventoryItemFindFirst.mockResolvedValue(baseItem)
     inventoryTransactionFindUnique
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ id: 'txn-winner', idempotencyKey: 'order-123', quantityChange: 10, quantityAfter: 20 })

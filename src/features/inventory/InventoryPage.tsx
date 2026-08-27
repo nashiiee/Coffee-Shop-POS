@@ -4,6 +4,7 @@ import { useAuth } from '../auth/useAuth'
 import { ApiError } from '../../lib/apiClient'
 import * as inventoryApi from './api'
 import type { InventoryItem, InventoryTransactionType, StockStatus } from './types'
+import { InventoryIcon } from '../admin/icons'
 
 const STATUS_LABEL: Record<StockStatus, string> = {
   OUT_OF_STOCK: 'Out of stock',
@@ -139,47 +140,69 @@ export function InventoryPage() {
 
       {isLoading ? (
         <p>Loading…</p>
+      ) : items.length === 0 ? (
+        <p className="text-stone-400">No inventory items yet.</p>
       ) : (
-        <ul className="divide-y rounded border">
+        <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((item) => (
-            <li key={item.id} className="px-4 py-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="font-medium">{item.product.name}</span>{' '}
-                  <span className={`ml-2 rounded px-2 py-0.5 text-xs ${STATUS_CLASS[item.status]}`}>
+            <li
+              key={item.id}
+              className={`rounded-2xl border border-stone-200 bg-white p-4 shadow-sm transition hover:shadow-md ${
+                openRowId === item.productId ? 'sm:col-span-2 lg:col-span-3' : ''
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-stone-500">
+                  <InventoryIcon />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold text-stone-800">{item.product.name}</p>
+                  <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASS[item.status]}`}>
                     {STATUS_LABEL[item.status]}
                   </span>
+                  <p className="mt-1 text-sm text-stone-500">Qty on hand: {item.quantityOnHand}</p>
                 </div>
-                <div className="flex items-center gap-4 text-sm">
-                  <span>Qty: {item.quantityOnHand}</span>
-                  <label className="flex items-center gap-1">
-                    Reorder at
-                    <input
-                      type="number"
-                      min="0"
-                      value={reorderDrafts[item.productId] ?? item.reorderLevel}
-                      onChange={(event) =>
-                        setReorderDrafts((prev) => ({ ...prev, [item.productId]: event.target.value }))
-                      }
-                      className="w-16 rounded border px-2 py-1"
-                    />
-                  </label>
-                  <button type="button" onClick={() => void handleSaveReorderLevel(item.productId)} className="underline">
-                    Save
-                  </button>
-                  <Link to={`/admin/inventory/${item.productId}/history`} className="underline">
-                    History
-                  </Link>
-                  <button type="button" onClick={() => openAdjustForm(item.productId)} className="underline">
-                    Adjust stock
-                  </button>
-                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-stone-100 pt-3 text-sm">
+                <label className="flex items-center gap-1.5 text-stone-600">
+                  Reorder at
+                  <input
+                    type="number"
+                    min="0"
+                    value={reorderDrafts[item.productId] ?? item.reorderLevel}
+                    onChange={(event) =>
+                      setReorderDrafts((prev) => ({ ...prev, [item.productId]: event.target.value }))
+                    }
+                    className="w-16 rounded border border-stone-200 px-2 py-1"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveReorderLevel(item.productId)}
+                  className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 hover:bg-stone-50"
+                >
+                  Save
+                </button>
+                <Link
+                  to={`/admin/inventory/${item.productId}/history`}
+                  className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 hover:bg-stone-50"
+                >
+                  History
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => openAdjustForm(item.productId)}
+                  className="ml-auto rounded-lg bg-stone-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-stone-800"
+                >
+                  Adjust stock
+                </button>
               </div>
 
               {openRowId === item.productId ? (
                 <form
                   onSubmit={(event) => void handleAdjust(event, item.productId)}
-                  className="mt-3 flex flex-wrap items-end gap-2 rounded border bg-gray-50 p-3"
+                  className="mt-3 flex flex-wrap items-end gap-2 rounded-xl border border-stone-200 bg-stone-50 p-3"
                 >
                   <label className="flex flex-col gap-1 text-sm">
                     Type
