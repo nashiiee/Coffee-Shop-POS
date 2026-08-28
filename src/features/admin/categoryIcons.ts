@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react'
 import {
   BreadIcon,
   CaffeineFreeIcon,
@@ -14,7 +15,7 @@ import {
   TeaIcon,
 } from './icons'
 
-type IconComponent = (props: { className?: string }) => JSX.Element
+type IconComponent = (props: { className?: string }) => ReactElement
 
 // Maps a category's name to its glyph — shared by the admin Categories page
 // and the cashier POS department rail so both surfaces label the same

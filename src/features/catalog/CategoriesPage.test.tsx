@@ -22,7 +22,7 @@ function renderPage() {
   )
 }
 
-const coffee: Category = { id: 'cat-1', name: 'Coffee', sortOrder: 0, isActive: true }
+const coffee: Category = { id: 'cat-1', name: 'Coffee', sortOrder: 0, isActive: true, parentId: null }
 
 beforeEach(() => {
   vi.mocked(catalogApi.listCategories).mockResolvedValue([coffee])
