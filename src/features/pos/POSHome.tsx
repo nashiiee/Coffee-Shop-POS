@@ -24,12 +24,11 @@ export function POSHome() {
         if (cancelled) return
         setProducts(productsResult)
         setCategories(categoriesResult)
-        // Default to the first top-level category (e.g. Coffee) rather than
-        // leaving nothing selected — the rail no longer has an "All" option
-        // of its own, so an unselected state would hide the sub-category row
-        // and look like the whole nav vanished.
-        const firstTopCategory = categoriesResult.find((category) => category.parentId === null)
-        if (firstTopCategory) setSelectedTopCategoryId(firstTopCategory.id)
+        // Leave selectedTopCategoryId unset (null) — POSWorkspace already
+        // treats "no category selected" as "show everything" (heading
+        // reads "All Items", no category filter applied), so opening the
+        // POS lands on the full catalog by default instead of whichever
+        // category happened to load first.
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof ApiError ? err.message : 'Failed to load the product catalog')
