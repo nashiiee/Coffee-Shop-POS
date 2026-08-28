@@ -14,6 +14,7 @@ import { productRouter } from './routes/product.routes.js'
 import { modifierRouter } from './routes/modifier.routes.js'
 import { inventoryRouter } from './routes/inventory.routes.js'
 import { discountRouter } from './routes/discount.routes.js'
+import { expenseRouter } from './routes/expense.routes.js'
 import { checkoutRouter } from './routes/checkout.routes.js'
 import { orderRouter } from './routes/order.routes.js'
 import { errorHandler } from './middleware/errorHandler.js'
@@ -61,6 +62,7 @@ export function createApp() {
   app.use('/api/modifiers', modifierRouter)
   app.use('/api/inventory', inventoryRouter)
   app.use('/api/discounts', discountRouter)
+  app.use('/api/expenses', expenseRouter)
   app.use('/api/checkout', checkoutRouter)
   app.use('/api/orders', orderRouter)
 

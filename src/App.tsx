@@ -9,6 +9,7 @@ import { ProductsPage } from './features/catalog/ProductsPage'
 import { ProductFormPage } from './features/catalog/ProductFormPage'
 import { ModifiersPage } from './features/catalog/ModifiersPage'
 import { DiscountsPage } from './features/discounts/DiscountsPage'
+import { ExpensesPage } from './features/expenses/ExpensesPage'
 import { InventoryPage } from './features/inventory/InventoryPage'
 import { InventoryHistoryPage } from './features/inventory/InventoryHistoryPage'
 import { POSHome } from './features/pos/POSHome'
@@ -49,6 +50,7 @@ function App() {
             <Route path="products/:id" element={<ProductFormPage />} />
             <Route path="modifiers" element={<ModifiersPage />} />
             <Route path="discounts" element={<DiscountsPage />} />
+            <Route path="expenses" element={<ExpensesPage />} />
             <Route path="inventory" element={<InventoryPage />} />
             <Route path="inventory/:productId/history" element={<InventoryHistoryPage />} />
             <Route path="orders" element={<OrdersPage basePath="/admin/orders" />} />

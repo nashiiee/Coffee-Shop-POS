@@ -20,6 +20,7 @@ import {
   ReceiptIcon,
   UserIcon,
   UsersIcon,
+  WalletIcon,
 } from './icons'
 
 const NAV_GROUPS = [
@@ -33,6 +34,10 @@ const NAV_GROUPS = [
       { to: '/admin/orders', end: false, label: 'Orders', Icon: ReceiptIcon },
       { to: '/admin/reports', end: false, label: 'Reports', Icon: ChartIcon },
     ],
+  },
+  {
+    label: 'Finance',
+    items: [{ to: '/admin/expenses', end: false, label: 'Expenses', Icon: WalletIcon }],
   },
   {
     label: 'Catalog',

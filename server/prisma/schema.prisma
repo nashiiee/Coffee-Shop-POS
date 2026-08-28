@@ -41,6 +41,7 @@ model Shop {
   discounts          Discount[]
   orders             Order[]
   auditLogs          AuditLog[]
+  expenses           Expense[]
   createdAt          DateTime               @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime               @updatedAt @db.Timestamptz(3)
 }
@@ -58,6 +59,7 @@ model User {
   orders                Order[]
   voidedOrders          Order[]                @relation("OrderVoidedBy")
   auditLogs             AuditLog[]
+  expenses              Expense[]
   createdAt             DateTime               @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime               @updatedAt @db.Timestamptz(3)
 
@@ -80,6 +82,9 @@ enum AuditAction {
   CONFIG_CHANGED
   ORDER_CANCELLED
   ORDER_REFUNDED
+  EXPENSE_CREATED
+  EXPENSE_UPDATED
+  EXPENSE_DELETED
 }
 
 // Append-only: no route ever exposes update or delete for this model, at any
@@ -341,6 +346,32 @@ model Discount {
   @@index([name])
   @@index([isActive])
   @@index([shopId])
+}
+
+// A shop's operating cost (rent, supplies, utilities, payroll, etc.) — kept
+// separate from Order/OrderItem, which record revenue, not spend. amount is
+// integer cents like every other money field in this schema. category is a
+// free-text string rather than an enum/lookup table — the set of categories
+// a shop wants (rent, utilities, ingredients...) varies enough between shops
+// that a fixed enum would need constant edits; the admin UI offers common
+// suggestions but doesn't enforce them.
+model Expense {
+  id              String   @id @default(cuid())
+  shopId          String
+  shop            Shop     @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  description     String
+  category        String
+  amount          Int
+  incurredAt      DateTime @db.Timestamptz(3)
+  note            String?
+  createdByUserId String
+  createdBy       User     @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([shopId])
+  @@index([incurredAt])
+  @@index([category])
 }
 
 // The financial record of a completed sale. subtotal/discountAmount/total
