@@ -32,10 +32,8 @@ const productModifierDeleteMany = vi.fn()
 const productModifierCreateMany = vi.fn()
 const userFindUnique = vi.fn()
 const auditLogCreate = vi.fn()
-const shopFindUnique = vi.fn()
 
 const mockPrisma = {
-  shop: { findUnique: shopFindUnique },
   category: {
     findMany: categoryFindMany,
     findFirst: categoryFindFirst,
@@ -72,8 +70,8 @@ const { createApp } = await import('../src/app.js')
 const { signAccessToken } = await import('../src/lib/jwt.js')
 
 const app = createApp()
-const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN', shopId: 'shop-1' })
-const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER', shopId: 'shop-1' })
+const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN' })
+const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER' })
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -84,7 +82,6 @@ beforeEach(() => {
   categoryFindUnique.mockResolvedValue({ id: 'cat-1', name: 'Coffee', sortOrder: 0, isActive: true })
   modifierFindUnique.mockResolvedValue({ id: 'mod-1', name: 'Extra Shot', price: 75, isActive: true })
   userFindUnique.mockResolvedValue({ name: 'Admin' })
-  shopFindUnique.mockResolvedValue({ subscriptionStatus: 'ACTIVE' })
   mockPrisma.$transaction.mockImplementation((arg: unknown) =>
     typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(mockPrisma) : Promise.all(arg as Promise<unknown>[]),
   )
@@ -112,7 +109,7 @@ describe('Categories API', () => {
   it('lets an admin see the full unfiltered category list when activeOnly is omitted', async () => {
     categoryFindMany.mockResolvedValue([])
     await request(app).get('/api/categories').set('Authorization', `Bearer ${adminToken}`)
-    expect(categoryFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { shopId: 'shop-1' } }))
+    expect(categoryFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }))
   })
 
   it('allows an admin to create a category', async () => {
@@ -124,7 +121,7 @@ describe('Categories API', () => {
     expect(res.status).toBe(201)
     expect(res.body.name).toBe('Coffee')
     expect(categoryCreate).toHaveBeenCalledWith({
-      data: { name: 'Coffee', sortOrder: 0, parentId: null, shopId: 'shop-1' },
+      data: { name: 'Coffee', sortOrder: 0, parentId: null },
     })
   })
 
@@ -187,7 +184,7 @@ describe('Categories API', () => {
       .send({ isActive: false })
     expect(res.status).toBe(200)
     expect(res.body.isActive).toBe(false)
-    expect(categoryUpdate).toHaveBeenCalledWith({ where: { id: 'cat-1', shopId: 'shop-1' }, data: { isActive: false } })
+    expect(categoryUpdate).toHaveBeenCalledWith({ where: { id: 'cat-1' }, data: { isActive: false } })
   })
 
   it('blocks a cashier from updating a category', async () => {
@@ -239,7 +236,7 @@ describe('Products API', () => {
   it('lets an admin see the full unfiltered product list when activeOnly is omitted', async () => {
     productFindMany.mockResolvedValue([])
     await request(app).get('/api/products').set('Authorization', `Bearer ${adminToken}`)
-    expect(productFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { shopId: 'shop-1' } }))
+    expect(productFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }))
   })
 
   it('allows an admin to create a product', async () => {
@@ -252,7 +249,7 @@ describe('Products API', () => {
     expect(res.status).toBe(201)
     expect(res.body.name).toBe('Latte')
     expect(productCreate).toHaveBeenCalledWith({
-      data: { categoryId: 'cat-1', name: 'Latte', basePrice: 450, shopId: 'shop-1', inventory: { create: {} } },
+      data: { categoryId: 'cat-1', name: 'Latte', basePrice: 450, inventory: { create: {} } },
     })
   })
 
@@ -284,7 +281,7 @@ describe('Products API', () => {
     expect(res.body.basePrice).toBe(500)
     expect(res.body.isActive).toBe(false)
     expect(productUpdate).toHaveBeenCalledWith({
-      where: { id: 'prod-1', shopId: 'shop-1' },
+      where: { id: 'prod-1' },
       data: { basePrice: 500, isActive: false },
     })
   })
@@ -407,7 +404,7 @@ describe('Modifiers API', () => {
   it('lets an admin see the full unfiltered modifier list when activeOnly is omitted', async () => {
     modifierFindMany.mockResolvedValue([])
     await request(app).get('/api/modifiers').set('Authorization', `Bearer ${adminToken}`)
-    expect(modifierFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { shopId: 'shop-1' } }))
+    expect(modifierFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }))
   })
 
   it('allows an admin to create a modifier', async () => {
@@ -417,7 +414,7 @@ describe('Modifiers API', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ name: 'Extra Shot', price: 75 })
     expect(res.status).toBe(201)
-    expect(modifierCreate).toHaveBeenCalledWith({ data: { name: 'Extra Shot', price: 75, shopId: 'shop-1' } })
+    expect(modifierCreate).toHaveBeenCalledWith({ data: { name: 'Extra Shot', price: 75 } })
   })
 
   it('blocks a cashier from creating a modifier', async () => {
@@ -467,7 +464,7 @@ describe('Modifiers API', () => {
       .send({ price: 100 })
     expect(res.status).toBe(200)
     expect(res.body.price).toBe(100)
-    expect(modifierUpdate).toHaveBeenCalledWith({ where: { id: 'mod-1', shopId: 'shop-1' }, data: { price: 100 } })
+    expect(modifierUpdate).toHaveBeenCalledWith({ where: { id: 'mod-1' }, data: { price: 100 } })
   })
 
   it('blocks a cashier from updating a modifier', async () => {

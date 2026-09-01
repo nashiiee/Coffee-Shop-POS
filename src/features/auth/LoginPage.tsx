@@ -66,7 +66,7 @@ export function LoginPage() {
           <CupIcon className="h-9 w-9 text-[#E8935A]" />
         </div>
 
-        <h1 className="font-display mt-3 text-4xl font-medium text-white">Coffee Shop POS</h1>
+        <h1 className="font-display mt-3 text-4xl font-medium text-white">Culture Cup</h1>
         <p className="mt-2 text-sm text-white/50">Sign in to start your shift</p>
 
         <div className="login-card-enter mt-8 w-full rounded-3xl bg-[#FBF7F0] p-8 shadow-2xl shadow-black/40">

@@ -4,10 +4,9 @@ import { AppError } from '../lib/AppError.js'
 import { recordAudit } from './audit.service.js'
 import type { CreateExpenseInput, ListExpensesQuery, UpdateExpenseInput } from '../schemas/expense.schema.js'
 
-export function listExpenses(filters: ListExpensesQuery, shopId: string) {
+export function listExpenses(filters: ListExpensesQuery) {
   return prisma.expense.findMany({
     where: {
-      shopId,
       ...(filters.category ? { category: filters.category } : {}),
       ...(filters.dateFrom || filters.dateTo
         ? {
@@ -25,13 +24,12 @@ export function listExpenses(filters: ListExpensesQuery, shopId: string) {
   })
 }
 
-export async function createExpense(data: CreateExpenseInput, actorId: string, shopId: string) {
+export async function createExpense(data: CreateExpenseInput, actorId: string) {
   const created = await prisma.expense.create({
-    data: { ...omitUndefined(data), shopId, createdByUserId: actorId },
+    data: { ...omitUndefined(data), createdByUserId: actorId },
     include: { createdBy: { select: { name: true } } },
   })
   await recordAudit({
-    shopId,
     actorId,
     action: 'EXPENSE_CREATED',
     resource: 'Expense',
@@ -41,15 +39,15 @@ export async function createExpense(data: CreateExpenseInput, actorId: string, s
   return created
 }
 
-export async function updateExpense(id: string, data: UpdateExpenseInput, actorId: string, shopId: string) {
-  const current = await prisma.expense.findUnique({ where: { id, shopId } })
+export async function updateExpense(id: string, data: UpdateExpenseInput, actorId: string) {
+  const current = await prisma.expense.findUnique({ where: { id } })
   if (!current) {
     throw AppError.notFound('Expense not found')
   }
 
   const changes = omitUndefined(data)
   const updated = await prisma.expense.update({
-    where: { id, shopId },
+    where: { id },
     data: changes,
     include: { createdBy: { select: { name: true } } },
   })
@@ -57,7 +55,6 @@ export async function updateExpense(id: string, data: UpdateExpenseInput, actorI
   const changedFields = Object.keys(changes) as (keyof typeof changes)[]
   if (changedFields.length > 0) {
     await recordAudit({
-      shopId,
       actorId,
       action: 'EXPENSE_UPDATED',
       resource: 'Expense',
@@ -69,14 +66,13 @@ export async function updateExpense(id: string, data: UpdateExpenseInput, actorI
   return updated
 }
 
-export async function deleteExpense(id: string, actorId: string, shopId: string) {
-  const current = await prisma.expense.findUnique({ where: { id, shopId } })
+export async function deleteExpense(id: string, actorId: string) {
+  const current = await prisma.expense.findUnique({ where: { id } })
   if (!current) {
     throw AppError.notFound('Expense not found')
   }
-  await prisma.expense.delete({ where: { id, shopId } })
+  await prisma.expense.delete({ where: { id } })
   await recordAudit({
-    shopId,
     actorId,
     action: 'EXPENSE_DELETED',
     resource: 'Expense',

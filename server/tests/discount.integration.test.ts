@@ -16,7 +16,6 @@ const discountCreate = vi.fn()
 const discountUpdate = vi.fn()
 const userFindUnique = vi.fn()
 const auditLogCreate = vi.fn()
-const shopFindUnique = vi.fn()
 
 const mockPrisma = {
   discount: {
@@ -28,7 +27,6 @@ const mockPrisma = {
   },
   user: { findUnique: userFindUnique },
   auditLog: { create: auditLogCreate },
-  shop: { findUnique: shopFindUnique },
 }
 
 vi.mock('../src/lib/prisma.js', () => ({ prisma: mockPrisma }))
@@ -37,8 +35,8 @@ const { createApp } = await import('../src/app.js')
 const { signAccessToken } = await import('../src/lib/jwt.js')
 
 const app = createApp()
-const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN', shopId: 'shop-1' })
-const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER', shopId: 'shop-1' })
+const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN' })
+const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER' })
 
 const tenPercentOff = {
   id: 'disc-1',
@@ -53,7 +51,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   discountFindFirst.mockResolvedValue(null) // name is available by default
   userFindUnique.mockResolvedValue({ name: 'Admin' })
-  shopFindUnique.mockResolvedValue({ subscriptionStatus: 'ACTIVE' })
 })
 
 describe('GET /api/discounts', () => {
@@ -94,7 +91,7 @@ describe('GET /api/discounts', () => {
   it('lets an admin see the full unfiltered catalog when activeOnly is omitted', async () => {
     discountFindMany.mockResolvedValue([tenPercentOff])
     await request(app).get('/api/discounts').set('Authorization', `Bearer ${adminToken}`)
-    expect(discountFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { shopId: 'shop-1' } }))
+    expect(discountFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }))
   })
 })
 
@@ -116,7 +113,7 @@ describe('POST /api/discounts — ADMIN create', () => {
       .send({ name: '10% Off', type: 'PERCENTAGE', value: 10 })
     expect(res.status).toBe(201)
     expect(discountCreate).toHaveBeenCalledWith({
-      data: { name: '10% Off', type: 'PERCENTAGE', value: 10, shopId: 'shop-1' },
+      data: { name: '10% Off', type: 'PERCENTAGE', value: 10 },
     })
   })
 
@@ -220,7 +217,7 @@ describe('PATCH /api/discounts/:id — ADMIN edit and activate/deactivate', () =
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ value: 20 })
     expect(res.status).toBe(200)
-    expect(discountUpdate).toHaveBeenCalledWith({ where: { id: 'disc-1', shopId: 'shop-1' }, data: { value: 20 } })
+    expect(discountUpdate).toHaveBeenCalledWith({ where: { id: 'disc-1' }, data: { value: 20 } })
   })
 
   it('deactivates a discount', async () => {
@@ -231,7 +228,7 @@ describe('PATCH /api/discounts/:id — ADMIN edit and activate/deactivate', () =
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ isActive: false })
     expect(res.status).toBe(200)
-    expect(discountUpdate).toHaveBeenCalledWith({ where: { id: 'disc-1', shopId: 'shop-1' }, data: { isActive: false } })
+    expect(discountUpdate).toHaveBeenCalledWith({ where: { id: 'disc-1' }, data: { isActive: false } })
   })
 
   it('reactivates a discount', async () => {
@@ -284,7 +281,7 @@ describe('PATCH /api/discounts/:id — ADMIN edit and activate/deactivate', () =
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ expiresAt: null })
     expect(res.status).toBe(200)
-    expect(discountUpdate).toHaveBeenCalledWith({ where: { id: 'disc-1', shopId: 'shop-1' }, data: { expiresAt: null } })
+    expect(discountUpdate).toHaveBeenCalledWith({ where: { id: 'disc-1' }, data: { expiresAt: null } })
   })
 
   it('rejects an empty patch body', async () => {

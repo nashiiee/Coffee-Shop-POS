@@ -2,12 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import request from 'supertest'
 
 const findUnique = vi.fn()
-const shopFindUnique = vi.fn()
 
 vi.mock('../src/lib/prisma.js', () => ({
   prisma: {
     user: { findUnique: (...args: unknown[]) => findUnique(...args) },
-    shop: { findUnique: (...args: unknown[]) => shopFindUnique(...args) },
   },
 }))
 
@@ -23,16 +21,10 @@ const CASHIER_PASSWORD = 'cashier-password-123'
 let adminUser: Record<string, unknown>
 let cashierUser: Record<string, unknown>
 
-const shopFixture = { id: 'shop-1', subscriptionStatus: 'ACTIVE' as const }
-
 beforeEach(async () => {
   findUnique.mockReset()
-  shopFindUnique.mockReset()
-  shopFindUnique.mockResolvedValue(shopFixture)
   adminUser = {
     id: 'admin-1',
-    shopId: shopFixture.id,
-    shop: shopFixture,
     name: 'Ada Admin',
     email: 'admin@coffeeshop.test',
     role: 'ADMIN',
@@ -41,8 +33,6 @@ beforeEach(async () => {
   }
   cashierUser = {
     id: 'cashier-1',
-    shopId: shopFixture.id,
-    shop: shopFixture,
     name: 'Cara Cashier',
     email: 'cashier@coffeeshop.test',
     role: 'CASHIER',
@@ -135,31 +125,31 @@ describe('RBAC on protected routes', () => {
   })
 
   it('rejects a cashier hitting an admin-only route', async () => {
-    const token = signAccessToken({ sub: 'cashier-1', role: 'CASHIER', shopId: 'shop-1' })
+    const token = signAccessToken({ sub: 'cashier-1', role: 'CASHIER' })
     const res = await request(app).get('/api/admin/overview').set('Authorization', `Bearer ${token}`)
     expect(res.status).toBe(403)
   })
 
   it('allows an admin to access an admin-only route', async () => {
-    const token = signAccessToken({ sub: 'admin-1', role: 'ADMIN', shopId: 'shop-1' })
+    const token = signAccessToken({ sub: 'admin-1', role: 'ADMIN' })
     const res = await request(app).get('/api/admin/overview').set('Authorization', `Bearer ${token}`)
     expect(res.status).toBe(200)
   })
 
   it('allows a cashier to access the shared POS route', async () => {
-    const token = signAccessToken({ sub: 'cashier-1', role: 'CASHIER', shopId: 'shop-1' })
+    const token = signAccessToken({ sub: 'cashier-1', role: 'CASHIER' })
     const res = await request(app).get('/api/pos/session').set('Authorization', `Bearer ${token}`)
     expect(res.status).toBe(200)
   })
 
   it('allows an admin to access the shared POS route too', async () => {
-    const token = signAccessToken({ sub: 'admin-1', role: 'ADMIN', shopId: 'shop-1' })
+    const token = signAccessToken({ sub: 'admin-1', role: 'ADMIN' })
     const res = await request(app).get('/api/pos/session').set('Authorization', `Bearer ${token}`)
     expect(res.status).toBe(200)
   })
 
   it('returns the caller\'s own profile from /api/users/me', async () => {
-    const token = signAccessToken({ sub: 'cashier-1', role: 'CASHIER', shopId: 'shop-1' })
+    const token = signAccessToken({ sub: 'cashier-1', role: 'CASHIER' })
     const res = await request(app).get('/api/users/me').set('Authorization', `Bearer ${token}`)
     expect(res.status).toBe(200)
     expect(res.body.email).toBe(cashierUser.email)

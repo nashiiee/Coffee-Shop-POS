@@ -4,7 +4,7 @@ import type { AdjustInventoryInput, UpdateReorderLevelInput } from '../schemas/i
 
 export async function listInventoryHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    res.status(200).json(await inventoryService.listInventory(req.user!.shopId))
+    res.status(200).json(await inventoryService.listInventory())
   } catch (err) {
     next(err)
   }
@@ -12,7 +12,7 @@ export async function listInventoryHandler(req: Request, res: Response, next: Ne
 
 export async function getInventoryItemHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    res.status(200).json(await inventoryService.getInventoryItem(req.params.productId as string, req.user!.shopId))
+    res.status(200).json(await inventoryService.getInventoryItem(req.params.productId as string))
   } catch (err) {
     next(err)
   }
@@ -23,7 +23,6 @@ export async function updateReorderLevelHandler(req: Request, res: Response, nex
     const item = await inventoryService.updateReorderLevel(
       req.params.productId as string,
       req.body as UpdateReorderLevelInput,
-      req.user!.shopId,
     )
     res.status(200).json(item)
   } catch (err) {
@@ -33,7 +32,7 @@ export async function updateReorderLevelHandler(req: Request, res: Response, nex
 
 export async function getInventoryHistoryHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    res.status(200).json(await inventoryService.getInventoryHistory(req.params.productId as string, req.user!.shopId))
+    res.status(200).json(await inventoryService.getInventoryHistory(req.params.productId as string))
   } catch (err) {
     next(err)
   }
@@ -45,7 +44,6 @@ export async function adjustInventoryHandler(req: Request, res: Response, next: 
       req.params.productId as string,
       req.body as AdjustInventoryInput,
       req.user!.id,
-      req.user!.shopId,
     )
     res.status(201).json(result)
   } catch (err) {

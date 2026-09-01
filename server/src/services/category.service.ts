@@ -14,21 +14,21 @@ function isActiveNameConflict(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
 }
 
-export function listCategories(activeOnly: boolean, actingRole: Role, shopId: string) {
+export function listCategories(activeOnly: boolean, actingRole: Role) {
   // A CASHIER can only ever see active categories, regardless of what
   // activeOnly value the request supplies — mirrors listDiscounts in
   // discount.service.ts. Without this, a cashier's POS screen (which never
   // passes activeOnly itself) would list every deactivated category too.
   const effectiveActiveOnly = actingRole === 'CASHIER' ? true : activeOnly
   return prisma.category.findMany({
-    where: { shopId, ...(effectiveActiveOnly ? { isActive: true } : {}) },
+    where: { ...(effectiveActiveOnly ? { isActive: true } : {}) },
     orderBy: { sortOrder: 'asc' },
   })
 }
 
-async function assertNameAvailable(name: string, shopId: string, excludeId?: string): Promise<void> {
+async function assertNameAvailable(name: string, excludeId?: string): Promise<void> {
   const existing = await prisma.category.findFirst({
-    where: { name, shopId, isActive: true, ...(excludeId ? { id: { not: excludeId } } : {}) },
+    where: { name, isActive: true, ...(excludeId ? { id: { not: excludeId } } : {}) },
   })
   if (existing) {
     throw AppError.conflict(`An active category named "${name}" already exists`)
@@ -37,12 +37,11 @@ async function assertNameAvailable(name: string, shopId: string, excludeId?: str
 
 // Only one level of nesting is supported — a sub-category's own parent must
 // itself be top-level, so the UI never has to render a third tier.
-async function assertValidParent(parentId: string, shopId: string, ownId?: string): Promise<void> {
+async function assertValidParent(parentId: string, ownId?: string): Promise<void> {
   if (parentId === ownId) {
     throw AppError.badRequest('A category cannot be its own parent')
   }
-  // shopId scoped so a shop can never nest under another shop's category.
-  const parent = await prisma.category.findUnique({ where: { id: parentId, shopId } })
+  const parent = await prisma.category.findUnique({ where: { id: parentId } })
   if (!parent) {
     throw AppError.notFound('Parent category not found')
   }
@@ -55,14 +54,14 @@ async function assertValidParent(parentId: string, shopId: string, ownId?: strin
 // updateCategory are, under CONFIG_CHANGED (see below). A newly-created,
 // unused category carries no history worth logging; the "important
 // configuration change" is deactivating/renaming one already in use.
-export async function createCategory(data: CreateCategoryInput, shopId: string) {
-  await assertNameAvailable(data.name, shopId)
+export async function createCategory(data: CreateCategoryInput) {
+  await assertNameAvailable(data.name)
   if (data.parentId) {
-    await assertValidParent(data.parentId, shopId)
+    await assertValidParent(data.parentId)
   }
   try {
     return await prisma.category.create({
-      data: { shopId, name: data.name, sortOrder: data.sortOrder, parentId: data.parentId ?? null },
+      data: { name: data.name, sortOrder: data.sortOrder, parentId: data.parentId ?? null },
     })
   } catch (err) {
     if (isActiveNameConflict(err)) {
@@ -72,14 +71,14 @@ export async function createCategory(data: CreateCategoryInput, shopId: string) 
   }
 }
 
-export async function updateCategory(id: string, data: UpdateCategoryInput, actorId: string, shopId: string) {
+export async function updateCategory(id: string, data: UpdateCategoryInput, actorId: string) {
   if (data.name) {
-    await assertNameAvailable(data.name, shopId, id)
+    await assertNameAvailable(data.name, id)
   }
   if (data.parentId) {
-    await assertValidParent(data.parentId, shopId, id)
+    await assertValidParent(data.parentId, id)
   }
-  const current = await prisma.category.findUnique({ where: { id, shopId } })
+  const current = await prisma.category.findUnique({ where: { id } })
   if (!current) {
     throw AppError.notFound('Category not found')
   }
@@ -87,7 +86,7 @@ export async function updateCategory(id: string, data: UpdateCategoryInput, acto
 
   let updated
   try {
-    updated = await prisma.category.update({ where: { id, shopId }, data: changes })
+    updated = await prisma.category.update({ where: { id }, data: changes })
   } catch (err) {
     if (isActiveNameConflict(err)) {
       // Reached even for a patch that never touched `name` (e.g. just
@@ -101,7 +100,6 @@ export async function updateCategory(id: string, data: UpdateCategoryInput, acto
   const changedFields = Object.keys(changes) as (keyof typeof changes)[]
   if (changedFields.length > 0) {
     await recordAudit({
-      shopId,
       actorId,
       action: 'CONFIG_CHANGED',
       resource: 'Category',

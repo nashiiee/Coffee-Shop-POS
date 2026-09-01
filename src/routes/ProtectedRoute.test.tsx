@@ -8,7 +8,7 @@ import type { Role, User } from '../features/auth/types'
 function renderProtected(user: User | null, isLoading: boolean, allowedRoles?: Role[]) {
   return render(
     <MemoryRouter initialEntries={['/protected']}>
-      <AuthContext.Provider value={{ user, shop: null, accessToken: null, isLoading, login: vi.fn(), logout: vi.fn() }}>
+      <AuthContext.Provider value={{ user, accessToken: null, isLoading, login: vi.fn(), logout: vi.fn() }}>
         <Routes>
           <Route path="/login" element={<div>login page</div>} />
           <Route path="/" element={<div>role home</div>} />

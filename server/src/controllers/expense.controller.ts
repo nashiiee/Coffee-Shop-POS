@@ -4,7 +4,7 @@ import type { CreateExpenseInput, ListExpensesQuery, UpdateExpenseInput } from '
 
 export async function listExpensesHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const expenses = await expenseService.listExpenses(req.query as ListExpensesQuery, req.user!.shopId)
+    const expenses = await expenseService.listExpenses(req.query as ListExpensesQuery)
     res.status(200).json(expenses)
   } catch (err) {
     next(err)
@@ -13,7 +13,7 @@ export async function listExpensesHandler(req: Request, res: Response, next: Nex
 
 export async function createExpenseHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const expense = await expenseService.createExpense(req.body as CreateExpenseInput, req.user!.id, req.user!.shopId)
+    const expense = await expenseService.createExpense(req.body as CreateExpenseInput, req.user!.id)
     res.status(201).json(expense)
   } catch (err) {
     next(err)
@@ -26,7 +26,6 @@ export async function updateExpenseHandler(req: Request, res: Response, next: Ne
       req.params.id as string,
       req.body as UpdateExpenseInput,
       req.user!.id,
-      req.user!.shopId,
     )
     res.status(200).json(expense)
   } catch (err) {
@@ -36,7 +35,7 @@ export async function updateExpenseHandler(req: Request, res: Response, next: Ne
 
 export async function deleteExpenseHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    await expenseService.deleteExpense(req.params.id as string, req.user!.id, req.user!.shopId)
+    await expenseService.deleteExpense(req.params.id as string, req.user!.id)
     res.status(204).send()
   } catch (err) {
     next(err)

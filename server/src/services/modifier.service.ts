@@ -14,21 +14,21 @@ function isActiveNameConflict(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
 }
 
-export function listModifiers(activeOnly: boolean, actingRole: Role, shopId: string) {
+export function listModifiers(activeOnly: boolean, actingRole: Role) {
   // A CASHIER can only ever see active modifiers, regardless of what
   // activeOnly value the request supplies — mirrors listDiscounts in
   // discount.service.ts. Without this, a cashier's POS screen (which never
   // passes activeOnly itself) would list every deactivated modifier too.
   const effectiveActiveOnly = actingRole === 'CASHIER' ? true : activeOnly
   return prisma.modifier.findMany({
-    where: { shopId, ...(effectiveActiveOnly ? { isActive: true } : {}) },
+    where: { ...(effectiveActiveOnly ? { isActive: true } : {}) },
     orderBy: { name: 'asc' },
   })
 }
 
-async function assertNameAvailable(name: string, shopId: string, excludeId?: string): Promise<void> {
+async function assertNameAvailable(name: string, excludeId?: string): Promise<void> {
   const existing = await prisma.modifier.findFirst({
-    where: { name, shopId, isActive: true, ...(excludeId ? { id: { not: excludeId } } : {}) },
+    where: { name, isActive: true, ...(excludeId ? { id: { not: excludeId } } : {}) },
   })
   if (existing) {
     throw AppError.conflict(`An active modifier named "${name}" already exists`)
@@ -37,10 +37,10 @@ async function assertNameAvailable(name: string, shopId: string, excludeId?: str
 
 // Creation is intentionally not audited — see the matching note on
 // createCategory in category.service.ts.
-export async function createModifier(data: CreateModifierInput, shopId: string) {
-  await assertNameAvailable(data.name, shopId)
+export async function createModifier(data: CreateModifierInput) {
+  await assertNameAvailable(data.name)
   try {
-    return await prisma.modifier.create({ data: { ...data, shopId } })
+    return await prisma.modifier.create({ data })
   } catch (err) {
     if (isActiveNameConflict(err)) {
       throw AppError.conflict(`An active modifier named "${data.name}" already exists`)
@@ -49,11 +49,11 @@ export async function createModifier(data: CreateModifierInput, shopId: string) 
   }
 }
 
-export async function updateModifier(id: string, data: UpdateModifierInput, actorId: string, shopId: string) {
+export async function updateModifier(id: string, data: UpdateModifierInput, actorId: string) {
   if (data.name) {
-    await assertNameAvailable(data.name, shopId, id)
+    await assertNameAvailable(data.name, id)
   }
-  const current = await prisma.modifier.findUnique({ where: { id, shopId } })
+  const current = await prisma.modifier.findUnique({ where: { id } })
   if (!current) {
     throw AppError.notFound('Modifier not found')
   }
@@ -61,7 +61,7 @@ export async function updateModifier(id: string, data: UpdateModifierInput, acto
 
   let updated
   try {
-    updated = await prisma.modifier.update({ where: { id, shopId }, data: changes })
+    updated = await prisma.modifier.update({ where: { id }, data: changes })
   } catch (err) {
     if (isActiveNameConflict(err)) {
       // Reached even for a patch that never touched `name` (e.g. just
@@ -75,7 +75,6 @@ export async function updateModifier(id: string, data: UpdateModifierInput, acto
   const changedFields = Object.keys(changes) as (keyof typeof changes)[]
   if (changedFields.length > 0) {
     await recordAudit({
-      shopId,
       actorId,
       action: 'CONFIG_CHANGED',
       resource: 'Modifier',

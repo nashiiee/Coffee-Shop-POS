@@ -98,7 +98,7 @@ function renderPOS() {
   return render(
     <MemoryRouter>
       <AuthContext.Provider
-        value={{ user: cashier, shop: null, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}
+        value={{ user: cashier, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}
       >
         <POSHome />
       </AuthContext.Provider>

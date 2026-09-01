@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import * as authApi from './api'
-import type { LoginRequest, Shop, User } from './types'
+import type { LoginRequest, User } from './types'
 import { AuthContext } from './authContext'
 
 // Refresh this long before the access token's own `exp`, so the renewal
@@ -32,7 +32,6 @@ function getTokenExpiryMs(token: string): number | null {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [shop, setShop] = useState<Shop | null>(null)
   const [accessToken, setAccessToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -44,7 +43,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then((result) => {
         if (cancelled) return
         setUser(result.user)
-        setShop(result.shop)
         setAccessToken(result.accessToken)
       })
       .catch(() => {
@@ -86,7 +84,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .then((result) => {
           if (cancelled) return
           setUser(result.user)
-          setShop(result.shop)
           setAccessToken(result.accessToken)
         })
         .catch(() => {
@@ -95,7 +92,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // account was disabled — sign out cleanly instead of leaving
           // every subsequent API call failing with a stale-token error.
           setUser(null)
-          setShop(null)
           setAccessToken(null)
         })
     }, delay)
@@ -109,7 +105,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (credentials: LoginRequest) => {
     const result = await authApi.login(credentials)
     setUser(result.user)
-    setShop(result.shop)
     setAccessToken(result.accessToken)
   }, [])
 
@@ -121,14 +116,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // whether the server call succeeds (e.g. network failure).
     } finally {
       setUser(null)
-      setShop(null)
       setAccessToken(null)
     }
   }, [])
 
   const value = useMemo(
-    () => ({ user, shop, accessToken, isLoading, login, logout }),
-    [user, shop, accessToken, isLoading, login, logout],
+    () => ({ user, accessToken, isLoading, login, logout }),
+    [user, accessToken, isLoading, login, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

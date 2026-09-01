@@ -5,11 +5,9 @@ import path from 'node:path'
 
 const productFindUnique = vi.fn()
 const productUpdate = vi.fn()
-const shopFindUnique = vi.fn()
 
 const mockPrisma = {
   product: { findUnique: productFindUnique, update: productUpdate },
-  shop: { findUnique: shopFindUnique },
 }
 
 vi.mock('../src/lib/prisma.js', () => ({ prisma: mockPrisma }))
@@ -19,8 +17,8 @@ const { signAccessToken } = await import('../src/lib/jwt.js')
 const { PRODUCT_UPLOADS_DIR } = await import('../src/services/productImage.service.js')
 
 const app = createApp()
-const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN', shopId: 'shop-1' })
-const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER', shopId: 'shop-1' })
+const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN' })
+const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER' })
 
 const existingProduct = { id: 'prod-1', name: 'Latte', imageUrl: null }
 const tinyJpegBuffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10])
@@ -29,7 +27,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   productFindUnique.mockResolvedValue(existingProduct)
   productUpdate.mockResolvedValue({ ...existingProduct })
-  shopFindUnique.mockResolvedValue({ subscriptionStatus: 'ACTIVE' })
 })
 
 afterEach(async () => {

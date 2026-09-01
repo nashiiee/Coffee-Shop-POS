@@ -3,7 +3,7 @@ import * as dashboardService from '../services/dashboard.service.js'
 
 export async function getDashboardHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    res.status(200).json(await dashboardService.getDashboard(req.user!.shopId))
+    res.status(200).json(await dashboardService.getDashboard())
   } catch (err) {
     next(err)
   }

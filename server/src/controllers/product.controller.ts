@@ -12,7 +12,7 @@ import type {
 
 export async function listProductsHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const products = await productService.listProducts(req.query.activeOnly === 'true', req.user!.role, req.user!.shopId)
+    const products = await productService.listProducts(req.query.activeOnly === 'true', req.user!.role)
     res.status(200).json(products)
   } catch (err) {
     next(err)
@@ -21,7 +21,7 @@ export async function listProductsHandler(req: Request, res: Response, next: Nex
 
 export async function getProductHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const product = await productService.getProduct(req.params.id as string, req.user!.shopId)
+    const product = await productService.getProduct(req.params.id as string)
     res.status(200).json(product)
   } catch (err) {
     next(err)
@@ -30,7 +30,7 @@ export async function getProductHandler(req: Request, res: Response, next: NextF
 
 export async function createProductHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const product = await productService.createProduct(req.body as CreateProductInput, req.user!.id, req.user!.shopId)
+    const product = await productService.createProduct(req.body as CreateProductInput, req.user!.id)
     res.status(201).json(product)
   } catch (err) {
     next(err)
@@ -43,7 +43,6 @@ export async function updateProductHandler(req: Request, res: Response, next: Ne
       req.params.id as string,
       req.body as UpdateProductInput,
       req.user!.id,
-      req.user!.shopId,
     )
     res.status(200).json(product)
   } catch (err) {
@@ -68,7 +67,7 @@ export async function uploadProductImageHandler(req: Request, res: Response, nex
 
 export async function deleteProductHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    await productService.deleteProduct(req.params.id as string, req.user!.shopId)
+    await productService.deleteProduct(req.params.id as string)
     res.status(204).end()
   } catch (err) {
     next(err)
@@ -80,7 +79,6 @@ export async function createVariantHandler(req: Request, res: Response, next: Ne
     const variant = await productService.createVariant(
       req.params.id as string,
       req.body as CreateVariantInput,
-      req.user!.shopId,
     )
     res.status(201).json(variant)
   } catch (err) {
@@ -94,7 +92,6 @@ export async function updateVariantHandler(req: Request, res: Response, next: Ne
       req.params.id as string,
       req.params.variantId as string,
       req.body as UpdateVariantInput,
-      req.user!.shopId,
     )
     res.status(200).json(variant)
   } catch (err) {
@@ -107,7 +104,6 @@ export async function setProductModifiersHandler(req: Request, res: Response, ne
     const product = await productService.setProductModifiers(
       req.params.id as string,
       req.body as SetProductModifiersInput,
-      req.user!.shopId,
     )
     res.status(200).json(product)
   } catch (err) {

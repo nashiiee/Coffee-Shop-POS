@@ -5,7 +5,6 @@ import type { Role } from '@prisma/client'
 export interface AccessTokenPayload {
   sub: string
   role: Role
-  shopId: string
 }
 
 export interface RefreshTokenPayload {
@@ -35,12 +34,11 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
   if (
     typeof decoded === 'string' ||
     typeof decoded.sub !== 'string' ||
-    !isRole(decoded.role) ||
-    typeof decoded.shopId !== 'string'
+    !isRole(decoded.role)
   ) {
     throw new Error('Malformed access token payload')
   }
-  return { sub: decoded.sub, role: decoded.role, shopId: decoded.shopId }
+  return { sub: decoded.sub, role: decoded.role }
 }
 
 export function verifyRefreshToken(token: string): RefreshTokenPayload {

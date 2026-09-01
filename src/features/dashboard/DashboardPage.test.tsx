@@ -14,7 +14,7 @@ const admin: User = { id: 'admin-1', name: 'Admin', email: 'a@x.com', role: 'ADM
 function renderPage() {
   return render(
     <MemoryRouter>
-      <AuthContext.Provider value={{ user: admin, shop: null, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
+      <AuthContext.Provider value={{ user: admin, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
         <DashboardPage />
       </AuthContext.Provider>
     </MemoryRouter>,

@@ -12,7 +12,6 @@ const inventoryTransactionCreate = vi.fn()
 const inventoryTransactionFindMany = vi.fn()
 const userFindUnique = vi.fn()
 const auditLogCreate = vi.fn()
-const shopFindUnique = vi.fn()
 
 const mockPrisma = {
   inventoryItem: {
@@ -30,7 +29,6 @@ const mockPrisma = {
   },
   user: { findUnique: userFindUnique },
   auditLog: { create: auditLogCreate },
-  shop: { findUnique: shopFindUnique },
   $transaction: vi.fn((arg: unknown) =>
     typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(mockPrisma) : Promise.all(arg as Promise<unknown>[]),
   ),
@@ -42,8 +40,8 @@ const { createApp } = await import('../src/app.js')
 const { signAccessToken } = await import('../src/lib/jwt.js')
 
 const app = createApp()
-const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN', shopId: 'shop-1' })
-const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER', shopId: 'shop-1' })
+const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN' })
+const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER' })
 
 const product = { id: 'prod-1', name: 'Latte', isActive: true }
 const baseItem = { id: 'inv-1', productId: 'prod-1', quantityOnHand: 10, reorderLevel: 5, product }
@@ -51,7 +49,6 @@ const baseItem = { id: 'inv-1', productId: 'prod-1', quantityOnHand: 10, reorder
 beforeEach(() => {
   vi.clearAllMocks()
   userFindUnique.mockResolvedValue({ name: 'Admin' })
-  shopFindUnique.mockResolvedValue({ subscriptionStatus: 'ACTIVE' })
   mockPrisma.$transaction.mockImplementation((arg: unknown) =>
     typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(mockPrisma) : Promise.all(arg as Promise<unknown>[]),
   )

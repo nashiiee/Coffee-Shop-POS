@@ -4,7 +4,6 @@ import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
 import { env } from './config/env.js'
 import { PRODUCT_UPLOADS_DIR } from './services/productImage.service.js'
-import { SHOP_UPLOADS_DIR } from './services/shopLogo.service.js'
 import { authRouter } from './routes/auth.routes.js'
 import { usersRouter } from './routes/users.routes.js'
 import { adminRouter } from './routes/admin.routes.js'
@@ -42,15 +41,6 @@ export function createApp() {
       next()
     },
     express.static(PRODUCT_UPLOADS_DIR),
-  )
-
-  app.use(
-    '/uploads/shops',
-    (_req, res, next) => {
-      res.set('Cross-Origin-Resource-Policy', 'cross-origin')
-      next()
-    },
-    express.static(SHOP_UPLOADS_DIR),
   )
 
   app.use('/api/auth', authRouter)
