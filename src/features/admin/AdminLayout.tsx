@@ -3,7 +3,6 @@ import { NavLink, Outlet, Link } from 'react-router'
 import { useAuth } from '../auth/useAuth'
 import * as dashboardApi from '../dashboard/api'
 import type { LowStockProduct } from '../dashboard/types'
-import { apiAssetUrl } from '../../lib/apiClient'
 import { ToastProvider } from './ToastProvider'
 import {
   AlertIcon,
@@ -20,6 +19,7 @@ import {
   ReceiptIcon,
   UserIcon,
   UsersIcon,
+  WalletIcon,
 } from './icons'
 
 const NAV_GROUPS = [
@@ -33,6 +33,10 @@ const NAV_GROUPS = [
       { to: '/admin/orders', end: false, label: 'Orders', Icon: ReceiptIcon },
       { to: '/admin/reports', end: false, label: 'Reports', Icon: ChartIcon },
     ],
+  },
+  {
+    label: 'Finance',
+    items: [{ to: '/admin/expenses', end: false, label: 'Expenses', Icon: WalletIcon }],
   },
   {
     label: 'Catalog',
@@ -56,8 +60,10 @@ const NAV_GROUPS = [
   },
 ] as const
 
+const SHOP_NAME = 'Culture Cup'
+
 export function AdminLayout() {
-  const { user, shop, logout, accessToken } = useAuth()
+  const { user, logout, accessToken } = useAuth()
   const [lowStockProducts, setLowStockProducts] = useState<LowStockProduct[]>([])
   const [isNotifOpen, setIsNotifOpen] = useState(false)
   const notifRef = useRef<HTMLDivElement>(null)
@@ -93,18 +99,8 @@ export function AdminLayout() {
       <div className="flex min-h-screen flex-col bg-stone-50">
         <header className="flex h-16 shrink-0 items-center justify-between border-b border-stone-200 bg-white px-4 sm:px-6">
           <div className="flex items-center gap-2">
-            {shop?.logoUrl ? (
-              <img
-                src={apiAssetUrl(shop.logoUrl)}
-                alt=""
-                className="h-8 w-8 shrink-0 rounded-lg object-cover"
-              />
-            ) : (
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-600 text-sm font-semibold text-white">
-                {shop?.name.charAt(0).toUpperCase() ?? 'C'}
-              </span>
-            )}
-            <span className="hidden text-base font-semibold text-stone-800 sm:inline">{shop?.name ?? 'Coffee Shop POS'}</span>
+            <img src="/culture-cup-logo.jpg" alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover" />
+            <span className="hidden text-base font-semibold text-stone-800 sm:inline">{SHOP_NAME}</span>
           </div>
           <div className="flex items-center gap-3 sm:gap-4">
             <Link

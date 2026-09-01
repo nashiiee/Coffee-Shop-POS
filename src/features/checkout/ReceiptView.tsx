@@ -1,20 +1,17 @@
 import { formatCents, formatOrderNumber } from '../../lib/money'
-import { useAuth } from '../auth/useAuth'
 import type { OrderRecord } from './types'
 
-const DEFAULT_SHOP_NAME = 'Coffee Shop POS'
+const SHOP_NAME = 'Culture Cup'
 
 interface ReceiptViewProps {
   order: OrderRecord
 }
 
 export function ReceiptView({ order }: ReceiptViewProps) {
-  const { shop } = useAuth()
-
   return (
     <div className="mx-auto max-w-sm rounded border bg-white p-6 font-mono text-sm print:border-0 print:shadow-none">
       <div className="mb-4 text-center">
-        <p className="text-lg font-semibold">{shop?.name ?? DEFAULT_SHOP_NAME}</p>
+        <p className="text-lg font-semibold">{SHOP_NAME}</p>
         <p>Order {formatOrderNumber(order.sequenceNumber)}</p>
         <p>{new Date(order.createdAt).toLocaleString()}</p>
         <p>Cashier: {order.cashier.name}</p>

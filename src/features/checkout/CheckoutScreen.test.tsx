@@ -35,7 +35,7 @@ const discounts: Discount[] = [{ id: 'disc-1', name: '10% Off', type: 'PERCENTAG
 function renderCheckout(onSuccess = vi.fn(), onCancel = vi.fn(), cartOverride: CartState = cart) {
   return render(
     <AuthContext.Provider
-      value={{ user: cashier, shop: null, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}
+      value={{ user: cashier, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}
     >
       <CartContext.Provider value={{ cart: cartOverride, dispatch: vi.fn() }}>
         <CheckoutScreen onSuccess={onSuccess} onCancel={onCancel} />

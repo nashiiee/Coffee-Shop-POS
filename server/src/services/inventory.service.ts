@@ -29,25 +29,17 @@ function isIdempotencyKeyConflict(err: unknown): boolean {
   )
 }
 
-export async function listInventory(shopId: string) {
+export async function listInventory() {
   const items = await prisma.inventoryItem.findMany({
-    where: { product: { shopId } },
     include: { product: { select: productSelect } },
     orderBy: { product: { name: 'asc' } },
   })
   return items.map(withStatus)
 }
 
-// InventoryItem carries no shopId column of its own (see the schema note on
-// InventoryTransaction's own denormalized shopId) — it's only reachable via
-// its Product relation, so ownership has to be verified with a relation
-// filter. That means this can't use Prisma's extended-whereUnique
-// `{ productId, shopId }` trick (that only combines a unique field with
-// *scalar* fields on the same model) — findFirst with a nested `product:
-// { shopId }` filter is the correct shape here.
-async function getInventoryItemByProductId(productId: string, shopId: string) {
+async function getInventoryItemByProductId(productId: string) {
   const item = await prisma.inventoryItem.findFirst({
-    where: { productId, product: { shopId } },
+    where: { productId },
     include: { product: { select: productSelect } },
   })
   if (!item) {
@@ -56,14 +48,14 @@ async function getInventoryItemByProductId(productId: string, shopId: string) {
   return item
 }
 
-export async function getInventoryItem(productId: string, shopId: string) {
-  return withStatus(await getInventoryItemByProductId(productId, shopId))
+export async function getInventoryItem(productId: string) {
+  return withStatus(await getInventoryItemByProductId(productId))
 }
 
-export async function updateReorderLevel(productId: string, data: UpdateReorderLevelInput, shopId: string) {
+export async function updateReorderLevel(productId: string, data: UpdateReorderLevelInput) {
   // Ownership already verified by this read — productId is a global cuid,
   // so the plain-productId update immediately below is safe to trust.
-  await getInventoryItemByProductId(productId, shopId)
+  await getInventoryItemByProductId(productId)
   const updated = await prisma.inventoryItem.update({
     where: { productId },
     data: { reorderLevel: data.reorderLevel },
@@ -72,21 +64,18 @@ export async function updateReorderLevel(productId: string, data: UpdateReorderL
   return withStatus(updated)
 }
 
-export async function getInventoryHistory(productId: string, shopId: string) {
-  const item = await getInventoryItemByProductId(productId, shopId)
+export async function getInventoryHistory(productId: string) {
+  const item = await getInventoryItemByProductId(productId)
   return prisma.inventoryTransaction.findMany({
-    // shopId is filtered directly here (InventoryTransaction carries its own
-    // denormalized shopId column) rather than joining through inventoryItem
-    // -> product, mirroring how reports.service.ts's raw SQL reaches it.
-    where: { inventoryItemId: item.id, shopId },
+    where: { inventoryItemId: item.id },
     orderBy: { createdAt: 'desc' },
     include: { createdBy: { select: { id: true, name: true } } },
   })
 }
 
-async function findByIdempotencyKey(inventoryItemId: string, idempotencyKey: string, shopId: string) {
+async function findByIdempotencyKey(inventoryItemId: string, idempotencyKey: string) {
   return prisma.inventoryTransaction.findUnique({
-    where: { inventoryItemId_idempotencyKey: { inventoryItemId, idempotencyKey }, shopId },
+    where: { inventoryItemId_idempotencyKey: { inventoryItemId, idempotencyKey } },
   })
 }
 
@@ -108,7 +97,6 @@ export async function applyInventoryChange(
   productId: string,
   change: InventoryChange,
   actingUserId: string,
-  shopId: string,
 ) {
   // Atomic conditional decrement: the WHERE clause re-checks sufficient
   // stock in the same statement as the write, so two concurrent requests
@@ -117,15 +105,9 @@ export async function applyInventoryChange(
   // branch adds the stock-sufficiency condition; the positive branch has
   // nothing else that could make it match zero rows today, so count===0
   // there would indicate a real bug, not "insufficient stock".)
-  //
-  // The `product: { shopId }` relation filter is required, not optional —
-  // InventoryItem has no shopId column of its own, so without this a
-  // guessed/leaked productId belonging to a *different* shop would still
-  // have its stock silently adjusted by this updateMany.
   const result = await tx.inventoryItem.updateMany({
     where: {
       productId,
-      product: { shopId },
       ...(change.quantityChange < 0 ? { quantityOnHand: { gte: -change.quantityChange } } : {}),
     },
     data: { quantityOnHand: { increment: change.quantityChange } },
@@ -135,14 +117,10 @@ export async function applyInventoryChange(
     throw AppError.conflict('Insufficient stock for this operation')
   }
 
-  // Safe to trust productId alone here: the updateMany above already
-  // proved this productId belongs to shopId (it matched >0 rows), and
-  // productId is a global cuid so this can't resolve to another shop's row.
   const updatedItem = await tx.inventoryItem.findUniqueOrThrow({ where: { productId } })
 
   const transaction = await tx.inventoryTransaction.create({
     data: omitUndefined({
-      shopId,
       inventoryItemId: updatedItem.id,
       type: change.type,
       quantityChange: change.quantityChange,
@@ -160,16 +138,15 @@ export async function adjustInventory(
   productId: string,
   input: AdjustInventoryInput,
   actingUserId: string,
-  shopId: string,
 ) {
-  const item = await getInventoryItemByProductId(productId, shopId)
+  const item = await getInventoryItemByProductId(productId)
 
   // Idempotent replay: a caller (e.g. a future checkout retry) that submits
   // the same idempotencyKey twice for the SAME product gets the original
   // result back instead of the stock being deducted a second time. Scoped
   // per inventory item — see the schema comment on why it's not global.
   if (input.idempotencyKey) {
-    const existing = await findByIdempotencyKey(item.id, input.idempotencyKey, shopId)
+    const existing = await findByIdempotencyKey(item.id, input.idempotencyKey)
     if (existing) {
       return { transaction: existing, item: withStatus(item) }
     }
@@ -182,12 +159,10 @@ export async function adjustInventory(
         productId,
         omitUndefined(input),
         actingUserId,
-        shopId,
       )
 
       await recordAudit(
         {
-          shopId,
           actorId: actingUserId,
           action: 'INVENTORY_ADJUSTED',
           resource: 'InventoryItem',
@@ -207,9 +182,9 @@ export async function adjustInventory(
     // Return the winner's result rather than an error: the operation this
     // caller intended did happen, just via the other request.
     if (input.idempotencyKey && isIdempotencyKeyConflict(err)) {
-      const winner = await findByIdempotencyKey(item.id, input.idempotencyKey, shopId)
+      const winner = await findByIdempotencyKey(item.id, input.idempotencyKey)
       if (winner) {
-        return { transaction: winner, item: withStatus(await getInventoryItemByProductId(productId, shopId)) }
+        return { transaction: winner, item: withStatus(await getInventoryItemByProductId(productId)) }
       }
     }
     throw err

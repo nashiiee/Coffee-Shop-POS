@@ -7,13 +7,11 @@ const orderItemGroupBy = vi.fn()
 const paymentGroupBy = vi.fn()
 const orderFindMany = vi.fn()
 const queryRaw = vi.fn()
-const shopFindUnique = vi.fn()
 
 const mockPrisma = {
   order: { aggregate: orderAggregate, count: orderCount, findMany: orderFindMany },
   orderItem: { groupBy: orderItemGroupBy },
   payment: { groupBy: paymentGroupBy },
-  shop: { findUnique: shopFindUnique },
   $queryRaw: queryRaw,
 }
 
@@ -23,8 +21,8 @@ const { createApp } = await import('../src/app.js')
 const { signAccessToken } = await import('../src/lib/jwt.js')
 
 const app = createApp()
-const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN', shopId: 'shop-1' })
-const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER', shopId: 'shop-1' })
+const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN' })
+const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER' })
 
 const emptyAgg = { _sum: { total: null }, _count: { _all: 0 } }
 
@@ -36,7 +34,6 @@ beforeEach(() => {
   paymentGroupBy.mockResolvedValue([])
   orderFindMany.mockResolvedValue([])
   queryRaw.mockResolvedValue([]) // low-stock query and trend query both use $queryRaw
-  shopFindUnique.mockResolvedValue({ subscriptionStatus: 'ACTIVE' })
 })
 
 describe('GET /api/admin/dashboard — authorization', () => {

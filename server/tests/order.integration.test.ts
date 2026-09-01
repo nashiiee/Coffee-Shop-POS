@@ -13,7 +13,6 @@ const inventoryItemUpdateMany = vi.fn()
 const inventoryItemFindUniqueOrThrow = vi.fn()
 const inventoryTransactionCreate = vi.fn()
 const auditLogCreate = vi.fn()
-const shopFindUnique = vi.fn()
 
 const mockPrisma = {
   order: {
@@ -27,7 +26,6 @@ const mockPrisma = {
   inventoryItem: { updateMany: inventoryItemUpdateMany, findUniqueOrThrow: inventoryItemFindUniqueOrThrow },
   inventoryTransaction: { create: inventoryTransactionCreate },
   auditLog: { create: auditLogCreate },
-  shop: { findUnique: shopFindUnique },
   $queryRaw: queryRaw,
   $transaction: vi.fn((arg: unknown) =>
     typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(mockPrisma) : Promise.all(arg as Promise<unknown>[]),
@@ -40,8 +38,8 @@ const { createApp } = await import('../src/app.js')
 const { signAccessToken } = await import('../src/lib/jwt.js')
 
 const app = createApp()
-const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN', shopId: 'shop-1' })
-const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER', shopId: 'shop-1' })
+const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN' })
+const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER' })
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -53,7 +51,6 @@ beforeEach(() => {
   inventoryItemFindUniqueOrThrow.mockResolvedValue({ id: 'inv-1', productId: 'prod-1', quantityOnHand: 10, reorderLevel: 2 })
   inventoryTransactionCreate.mockResolvedValue({ id: 'inv-txn-1' })
   auditLogCreate.mockResolvedValue({ id: 'audit-1' })
-  shopFindUnique.mockResolvedValue({ subscriptionStatus: 'ACTIVE' })
   mockPrisma.$transaction.mockImplementation((arg: unknown) =>
     typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(mockPrisma) : Promise.all(arg as Promise<unknown>[]),
   )
@@ -201,7 +198,7 @@ describe('GET /api/orders/cashiers', () => {
       { id: 'cashier-1', name: 'Alice' },
       { id: 'cashier-2', name: 'Bob' },
     ])
-    expect(userFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { role: 'CASHIER', shopId: 'shop-1' } }))
+    expect(userFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { role: 'CASHIER' } }))
   })
 })
 
@@ -316,7 +313,7 @@ describe('PATCH /api/orders/:id/cancel', () => {
 
     expect(orderUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'order-1', shopId: 'shop-1' },
+        where: { id: 'order-1' },
         data: expect.objectContaining({
           status: 'CANCELLED',
           voidedById: 'admin-1',

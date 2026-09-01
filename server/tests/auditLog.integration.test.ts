@@ -3,11 +3,9 @@ import request from 'supertest'
 
 const auditLogFindMany = vi.fn()
 const auditLogCount = vi.fn()
-const shopFindUnique = vi.fn()
 
 const mockPrisma = {
   auditLog: { findMany: auditLogFindMany, count: auditLogCount },
-  shop: { findUnique: shopFindUnique },
 }
 
 vi.mock('../src/lib/prisma.js', () => ({ prisma: mockPrisma }))
@@ -16,8 +14,8 @@ const { createApp } = await import('../src/app.js')
 const { signAccessToken } = await import('../src/lib/jwt.js')
 
 const app = createApp()
-const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN', shopId: 'shop-1' })
-const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER', shopId: 'shop-1' })
+const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN' })
+const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER' })
 
 const sampleLog = {
   id: 'audit-1',
@@ -35,7 +33,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   auditLogFindMany.mockResolvedValue([sampleLog])
   auditLogCount.mockResolvedValue(1)
-  shopFindUnique.mockResolvedValue({ subscriptionStatus: 'ACTIVE' })
 })
 
 describe('GET /api/admin/audit-logs — authorization', () => {

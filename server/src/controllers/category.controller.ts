@@ -7,7 +7,6 @@ export async function listCategoriesHandler(req: Request, res: Response, next: N
     const categories = await categoryService.listCategories(
       req.query.activeOnly === 'true',
       req.user!.role,
-      req.user!.shopId,
     )
     res.status(200).json(categories)
   } catch (err) {
@@ -17,7 +16,7 @@ export async function listCategoriesHandler(req: Request, res: Response, next: N
 
 export async function createCategoryHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const category = await categoryService.createCategory(req.body as CreateCategoryInput, req.user!.shopId)
+    const category = await categoryService.createCategory(req.body as CreateCategoryInput)
     res.status(201).json(category)
   } catch (err) {
     next(err)
@@ -30,7 +29,6 @@ export async function updateCategoryHandler(req: Request, res: Response, next: N
       req.params.id as string,
       req.body as UpdateCategoryInput,
       req.user!.id,
-      req.user!.shopId,
     )
     res.status(200).json(category)
   } catch (err) {

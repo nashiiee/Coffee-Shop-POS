@@ -11,12 +11,6 @@ export interface AuthUserDTO {
   role: Role
 }
 
-export interface AuthShopDTO {
-  id: string
-  name: string
-  logoUrl: string | null
-}
-
 export interface TokenPair {
   accessToken: string
   refreshToken: string
@@ -31,13 +25,9 @@ function toDTO(user: { id: string; name: string; email: string; role: Role }): A
   return { id: user.id, name: user.name, email: user.email, role: user.role }
 }
 
-function toShopDTO(shop: { id: string; name: string; logoUrl: string | null }): AuthShopDTO {
-  return { id: shop.id, name: shop.name, logoUrl: shop.logoUrl }
-}
-
-function issueTokens(user: { id: string; role: Role; shopId: string }): TokenPair {
+function issueTokens(user: { id: string; role: Role }): TokenPair {
   return {
-    accessToken: signAccessToken({ sub: user.id, role: user.role, shopId: user.shopId }),
+    accessToken: signAccessToken({ sub: user.id, role: user.role }),
     refreshToken: signRefreshToken({ sub: user.id }),
   }
 }
@@ -45,10 +35,10 @@ function issueTokens(user: { id: string; role: Role; shopId: string }): TokenPai
 export async function login(
   email: string,
   password: string,
-): Promise<{ user: AuthUserDTO; shop: AuthShopDTO; tokens: TokenPair }> {
-  const user = await prisma.user.findUnique({ where: { email }, include: { shop: true } })
+): Promise<{ user: AuthUserDTO; tokens: TokenPair }> {
+  const user = await prisma.user.findUnique({ where: { email } })
 
-  if (!user || !user.isActive || !user.shopId) {
+  if (!user || !user.isActive) {
     await comparePassword(password, DUMMY_HASH)
     throw AppError.unauthorized('Invalid email or password')
   }
@@ -58,24 +48,15 @@ export async function login(
     throw AppError.unauthorized('Invalid email or password')
   }
 
-  // Checked only after the password is verified — a suspended shop's own
-  // staff get told clearly why they're locked out (the whole point of the
-  // kill switch is a clean, understandable cutoff), while an attacker
-  // without valid credentials still learns nothing extra.
-  if (!user.shop || user.shop.subscriptionStatus === 'SUSPENDED') {
-    throw AppError.forbidden("This shop's access has been suspended. Contact support.")
-  }
-
   return {
     user: toDTO(user),
-    shop: toShopDTO(user.shop),
-    tokens: issueTokens({ id: user.id, role: user.role, shopId: user.shop.id }),
+    tokens: issueTokens({ id: user.id, role: user.role }),
   }
 }
 
 export async function refresh(
   refreshToken: string,
-): Promise<{ user: AuthUserDTO; shop: AuthShopDTO; tokens: TokenPair }> {
+): Promise<{ user: AuthUserDTO; tokens: TokenPair }> {
   let payload: { sub: string }
   try {
     payload = verifyRefreshToken(refreshToken)
@@ -83,19 +64,13 @@ export async function refresh(
     throw AppError.unauthorized('Invalid or expired refresh token')
   }
 
-  const user = await prisma.user.findUnique({ where: { id: payload.sub }, include: { shop: true } })
-  if (!user || !user.isActive || !user.shopId) {
+  const user = await prisma.user.findUnique({ where: { id: payload.sub } })
+  if (!user || !user.isActive) {
     throw AppError.unauthorized('Invalid or expired refresh token')
-  }
-
-  if (!user.shop || user.shop.subscriptionStatus === 'SUSPENDED') {
-    throw AppError.forbidden("This shop's access has been suspended. Contact support.")
   }
 
   return {
     user: toDTO(user),
-    shop: toShopDTO(user.shop),
-    tokens: issueTokens({ id: user.id, role: user.role, shopId: user.shop.id }),
+    tokens: issueTokens({ id: user.id, role: user.role }),
   }
 }
-

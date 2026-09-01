@@ -7,7 +7,6 @@ const orderFindMany = vi.fn()
 const inventoryTransactionCount = vi.fn()
 const inventoryTransactionFindMany = vi.fn()
 const inventoryTransactionGroupBy = vi.fn()
-const shopFindUnique = vi.fn()
 
 const mockPrisma = {
   $queryRaw: queryRaw,
@@ -17,7 +16,6 @@ const mockPrisma = {
     findMany: inventoryTransactionFindMany,
     groupBy: inventoryTransactionGroupBy,
   },
-  shop: { findUnique: shopFindUnique },
 }
 
 vi.mock('../src/lib/prisma.js', () => ({ prisma: mockPrisma }))
@@ -26,8 +24,8 @@ const { createApp } = await import('../src/app.js')
 const { signAccessToken } = await import('../src/lib/jwt.js')
 
 const app = createApp()
-const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN', shopId: 'shop-1' })
-const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER', shopId: 'shop-1' })
+const adminToken = signAccessToken({ sub: 'admin-1', role: 'ADMIN' })
+const cashierToken = signAccessToken({ sub: 'cashier-1', role: 'CASHIER' })
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -37,7 +35,6 @@ beforeEach(() => {
   inventoryTransactionCount.mockResolvedValue(0)
   inventoryTransactionFindMany.mockResolvedValue([])
   inventoryTransactionGroupBy.mockResolvedValue([])
-  shopFindUnique.mockResolvedValue({ subscriptionStatus: 'ACTIVE' })
 })
 
 const REPORT_ROUTES = [

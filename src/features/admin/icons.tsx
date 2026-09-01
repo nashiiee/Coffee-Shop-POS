@@ -209,6 +209,16 @@ export function CoinIcon({ className }: IconProps) {
   )
 }
 
+export function WalletIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M4 8.5A2 2 0 0 1 6 6.5h10A2.5 2.5 0 0 1 18.5 9v7A2.5 2.5 0 0 1 16 18.5H6A2 2 0 0 1 4 16.5Z" />
+      <path d="M4 8.5V6.5A2 2 0 0 1 6 4.5h7" />
+      <path d="M15 12h2.5a1.3 1.3 0 0 1 0 2.6H15a1.3 1.3 0 0 1 0-2.6Z" />
+    </svg>
+  )
+}
+
 export function ScaleIcon({ className }: IconProps) {
   return (
     <svg {...base} className={className}>

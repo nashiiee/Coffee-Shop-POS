@@ -16,7 +16,7 @@ export async function getSalesReportHandler(req: Request, res: Response, next: N
   try {
     const parsed = salesReportQuerySchema.safeParse(req.query)
     if (!parsed.success) throw badRequestFromZod(parsed.error.issues)
-    res.status(200).json(await reportsService.getSalesReport(parsed.data, req.user!.shopId))
+    res.status(200).json(await reportsService.getSalesReport(parsed.data))
   } catch (err) {
     next(err)
   }
@@ -26,7 +26,7 @@ export async function getProductSalesReportHandler(req: Request, res: Response, 
   try {
     const parsed = validatedDateRangeQuerySchema.safeParse(req.query)
     if (!parsed.success) throw badRequestFromZod(parsed.error.issues)
-    res.status(200).json(await reportsService.getProductSalesReport(parsed.data, req.user!.shopId))
+    res.status(200).json(await reportsService.getProductSalesReport(parsed.data))
   } catch (err) {
     next(err)
   }
@@ -36,7 +36,7 @@ export async function getCategorySalesReportHandler(req: Request, res: Response,
   try {
     const parsed = validatedDateRangeQuerySchema.safeParse(req.query)
     if (!parsed.success) throw badRequestFromZod(parsed.error.issues)
-    res.status(200).json(await reportsService.getCategorySalesReport(parsed.data, req.user!.shopId))
+    res.status(200).json(await reportsService.getCategorySalesReport(parsed.data))
   } catch (err) {
     next(err)
   }
@@ -46,7 +46,7 @@ export async function getCashierSalesReportHandler(req: Request, res: Response, 
   try {
     const parsed = validatedDateRangeQuerySchema.safeParse(req.query)
     if (!parsed.success) throw badRequestFromZod(parsed.error.issues)
-    res.status(200).json(await reportsService.getCashierSalesReport(parsed.data, req.user!.shopId))
+    res.status(200).json(await reportsService.getCashierSalesReport(parsed.data))
   } catch (err) {
     next(err)
   }
@@ -56,7 +56,7 @@ export async function getPaymentMethodReportHandler(req: Request, res: Response,
   try {
     const parsed = validatedDateRangeQuerySchema.safeParse(req.query)
     if (!parsed.success) throw badRequestFromZod(parsed.error.issues)
-    res.status(200).json(await reportsService.getPaymentMethodReport(parsed.data, req.user!.shopId))
+    res.status(200).json(await reportsService.getPaymentMethodReport(parsed.data))
   } catch (err) {
     next(err)
   }
@@ -66,7 +66,7 @@ export async function getDiscountsReportHandler(req: Request, res: Response, nex
   try {
     const parsed = validatedDateRangeQuerySchema.safeParse(req.query)
     if (!parsed.success) throw badRequestFromZod(parsed.error.issues)
-    res.status(200).json(await reportsService.getDiscountsReport(parsed.data, req.user!.shopId))
+    res.status(200).json(await reportsService.getDiscountsReport(parsed.data))
   } catch (err) {
     next(err)
   }
@@ -76,7 +76,7 @@ export async function getCancelledOrdersReportHandler(req: Request, res: Respons
   try {
     const parsed = cancelledOrdersQuerySchema.safeParse(req.query)
     if (!parsed.success) throw badRequestFromZod(parsed.error.issues)
-    res.status(200).json(await reportsService.getCancelledOrdersReport(parsed.data, req.user!.shopId))
+    res.status(200).json(await reportsService.getCancelledOrdersReport(parsed.data))
   } catch (err) {
     next(err)
   }
@@ -86,7 +86,7 @@ export async function getInventoryMovementReportHandler(req: Request, res: Respo
   try {
     const parsed = inventoryMovementQuerySchema.safeParse(req.query)
     if (!parsed.success) throw badRequestFromZod(parsed.error.issues)
-    res.status(200).json(await reportsService.getInventoryMovementReport(parsed.data, req.user!.shopId))
+    res.status(200).json(await reportsService.getInventoryMovementReport(parsed.data))
   } catch (err) {
     next(err)
   }

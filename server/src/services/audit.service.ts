@@ -5,7 +5,6 @@ import type { AuditLogQuery } from '../schemas/audit.schema.js'
 type DbClient = Prisma.TransactionClient | typeof prisma
 
 export interface RecordAuditInput {
-  shopId: string
   actorId: string
   action: AuditAction
   resource: string
@@ -24,7 +23,6 @@ export async function recordAudit(input: RecordAuditInput, db: DbClient = prisma
   const actor = await db.user.findUnique({ where: { id: input.actorId }, select: { name: true } })
   await db.auditLog.create({
     data: {
-      shopId: input.shopId,
       actorId: input.actorId,
       actorName: actor?.name ?? 'Unknown',
       action: input.action,
@@ -36,7 +34,7 @@ export async function recordAudit(input: RecordAuditInput, db: DbClient = prisma
   })
 }
 
-export async function listAuditLogs(query: AuditLogQuery, shopId: string) {
+export async function listAuditLogs(query: AuditLogQuery) {
   const { action, resource, dateFrom, dateTo, page, pageSize } = query
   // dateTo is a date-only value (midnight) coerced from a "YYYY-MM-DD" query
   // param — an exclusive `lt: dateTo` would drop the entire selected end
@@ -44,7 +42,6 @@ export async function listAuditLogs(query: AuditLogQuery, shopId: string) {
   // makes the filter inclusive of the whole selected day.
   const dateToExclusive = dateTo ? new Date(dateTo.getTime() + 24 * 60 * 60 * 1000) : undefined
   const where: Prisma.AuditLogWhereInput = {
-    shopId,
     ...(action ? { action } : {}),
     ...(resource ? { resource } : {}),
     ...(dateFrom || dateToExclusive

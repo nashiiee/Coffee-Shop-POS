@@ -21,7 +21,7 @@ const modifiers: Modifier[] = [
 
 function renderAt(path: string) {
   return render(
-    <AuthContext.Provider value={{ user: admin, shop: null, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
+    <AuthContext.Provider value={{ user: admin, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
       <ToastProvider>
         <MemoryRouter initialEntries={[path]}>
           <Routes>

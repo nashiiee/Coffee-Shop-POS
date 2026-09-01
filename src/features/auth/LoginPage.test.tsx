@@ -12,7 +12,7 @@ type LoginMock = (credentials: LoginRequest) => Promise<void>
 function renderLoginPage(login: LoginMock, user: User | null = null) {
   return render(
     <MemoryRouter initialEntries={['/login']}>
-      <AuthContext.Provider value={{ user, shop: null, accessToken: null, isLoading: false, login, logout: vi.fn() }}>
+      <AuthContext.Provider value={{ user, accessToken: null, isLoading: false, login, logout: vi.fn() }}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<div>role home</div>} />

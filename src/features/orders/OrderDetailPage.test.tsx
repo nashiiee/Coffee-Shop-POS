@@ -45,7 +45,7 @@ const order: OrderRecord = {
 function renderPage() {
   return render(
     <MemoryRouter initialEntries={['/orders/order-1']}>
-      <AuthContext.Provider value={{ user: cashier, shop: null, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
+      <AuthContext.Provider value={{ user: cashier, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
         <Routes>
           <Route path="/orders/:id" element={<OrderDetailPage />} />
         </Routes>
@@ -57,7 +57,7 @@ function renderPage() {
 function renderAdminPage() {
   return render(
     <MemoryRouter initialEntries={['/admin/orders/order-1']}>
-      <AuthContext.Provider value={{ user: admin, shop: null, accessToken: 'admin-token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
+      <AuthContext.Provider value={{ user: admin, accessToken: 'admin-token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
         <Routes>
           <Route path="/admin/orders/:id" element={<OrderDetailPage backPath="/admin/orders" />} />
         </Routes>
@@ -94,7 +94,7 @@ describe('OrderDetailPage', () => {
   it('links "Back to order history" to the given backPath, so an admin stays inside the admin shell', async () => {
     render(
       <MemoryRouter initialEntries={['/admin/orders/order-1']}>
-        <AuthContext.Provider value={{ user: cashier, shop: null, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
+        <AuthContext.Provider value={{ user: cashier, accessToken: 'token', isLoading: false, login: vi.fn(), logout: vi.fn() }}>
           <Routes>
             <Route path="/admin/orders/:id" element={<OrderDetailPage backPath="/admin/orders" />} />
           </Routes>

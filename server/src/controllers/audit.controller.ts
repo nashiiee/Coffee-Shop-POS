@@ -9,7 +9,7 @@ export async function listAuditLogsHandler(req: Request, res: Response, next: Ne
     if (!parsed.success) {
       throw AppError.validation(parsed.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })))
     }
-    res.status(200).json(await auditService.listAuditLogs(parsed.data, req.user!.shopId))
+    res.status(200).json(await auditService.listAuditLogs(parsed.data))
   } catch (err) {
     next(err)
   }

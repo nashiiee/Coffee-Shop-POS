@@ -23,9 +23,9 @@ function setRefreshCookie(res: Response, token: string) {
 export async function loginHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { email, password } = req.body as LoginInput
-    const { user, shop, tokens } = await authService.login(email, password)
+    const { user, tokens } = await authService.login(email, password)
     setRefreshCookie(res, tokens.refreshToken)
-    res.status(200).json({ user, shop, accessToken: tokens.accessToken })
+    res.status(200).json({ user, accessToken: tokens.accessToken })
   } catch (err) {
     next(err)
   }
@@ -37,9 +37,9 @@ export async function refreshHandler(req: Request, res: Response, next: NextFunc
     if (!token) {
       throw AppError.unauthorized('Missing refresh token')
     }
-    const { user, shop, tokens } = await authService.refresh(token)
+    const { user, tokens } = await authService.refresh(token)
     setRefreshCookie(res, tokens.refreshToken)
-    res.status(200).json({ user, shop, accessToken: tokens.accessToken })
+    res.status(200).json({ user, accessToken: tokens.accessToken })
   } catch (err) {
     next(err)
   }

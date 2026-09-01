@@ -1,18 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { ReceiptView } from './ReceiptView'
-import { AuthContext } from '../auth/authContext'
-import type { Shop } from '../auth/types'
 import type { OrderRecord } from './types'
 
-const testShop: Shop = { id: 'shop-1', name: 'Culture Cup', logoUrl: null }
-
-function renderReceipt(order: OrderRecord, shop: Shop | null = testShop) {
-  return render(
-    <AuthContext.Provider value={{ user: null, shop, accessToken: null, isLoading: false, login: vi.fn(), logout: vi.fn() }}>
-      <ReceiptView order={order} />
-    </AuthContext.Provider>,
-  )
+function renderReceipt(order: OrderRecord) {
+  return render(<ReceiptView order={order} />)
 }
 
 const baseOrder: OrderRecord = {
@@ -45,16 +37,11 @@ const baseOrder: OrderRecord = {
 }
 
 describe('ReceiptView', () => {
-  it("shows the logged-in shop's name, order number, timestamp, and cashier", () => {
+  it("shows the shop's name, order number, timestamp, and cashier", () => {
     renderReceipt(baseOrder)
     expect(screen.getByText('Culture Cup')).toBeInTheDocument()
     expect(screen.getByText('Order #000042')).toBeInTheDocument()
     expect(screen.getByText('Cashier: Cara')).toBeInTheDocument()
-  })
-
-  it('falls back to the default name when no shop is available', () => {
-    renderReceipt(baseOrder, null)
-    expect(screen.getByText('Coffee Shop POS')).toBeInTheDocument()
   })
 
   it('shows each item with its variant, quantity, and per-item modifiers', () => {

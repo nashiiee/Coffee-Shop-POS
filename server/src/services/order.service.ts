@@ -28,8 +28,8 @@ interface ActingUser {
 // value coming from the request is only ever honored for ADMIN. This is
 // enforced here (not just hidden in the UI) so a cashier can never see
 // another cashier's order history by crafting the request directly.
-function buildWhere(filters: ListOrdersQuery, actingUser: ActingUser, shopId: string): Prisma.OrderWhereInput {
-  const where: Prisma.OrderWhereInput = { shopId }
+function buildWhere(filters: ListOrdersQuery, actingUser: ActingUser): Prisma.OrderWhereInput {
+  const where: Prisma.OrderWhereInput = {}
 
   if (actingUser.role === 'CASHIER') {
     where.cashierId = actingUser.id
@@ -97,8 +97,8 @@ function resolveOrderBy(sortBy: ListOrdersQuery['sortBy']): Prisma.OrderOrderByW
   }
 }
 
-export async function listOrders(filters: ListOrdersQuery, actingUser: ActingUser, shopId: string) {
-  const where = buildWhere(filters, actingUser, shopId)
+export async function listOrders(filters: ListOrdersQuery, actingUser: ActingUser) {
+  const where = buildWhere(filters, actingUser)
   const skip = (filters.page - 1) * filters.pageSize
 
   const [total, orders] = await Promise.all([
@@ -118,16 +118,16 @@ export async function listOrders(filters: ListOrdersQuery, actingUser: ActingUse
 // Backs the ADMIN "filter by cashier" dropdown. Lists every cashier
 // account regardless of isActive, since a deactivated cashier's past
 // orders must remain filterable.
-export function listCashiers(shopId: string) {
+export function listCashiers() {
   return prisma.user.findMany({
-    where: { role: 'CASHIER', shopId },
+    where: { role: 'CASHIER' },
     select: { id: true, name: true },
     orderBy: { name: 'asc' },
   })
 }
 
-export async function getOrderById(orderId: string, actingUser: ActingUser, shopId: string) {
-  const order = await prisma.order.findUnique({ where: { id: orderId, shopId }, include: orderInclude })
+export async function getOrderById(orderId: string, actingUser: ActingUser) {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: orderInclude })
   if (!order) {
     throw AppError.notFound('Order not found')
   }
@@ -143,18 +143,16 @@ type VoidStatus = 'CANCELLED' | 'REFUNDED'
 // the resulting status and audit action; restocking, guards, and the
 // transaction shape are identical. Admin-only (enforced at the route), full
 // order only (no partial/per-item voids in this version).
-async function voidOrder(orderId: string, actorId: string, targetStatus: VoidStatus, reason: string, shopId: string) {
+async function voidOrder(orderId: string, actorId: string, targetStatus: VoidStatus, reason: string) {
   return prisma.$transaction(async (tx) => {
     // Locks this specific order row so a concurrent cancel+refund (or a
     // double-click) on the SAME order can't both read status: COMPLETED and
     // both restock inventory — the second transaction blocks here until the
     // first commits, then re-reads the now-updated status and correctly
     // hits the guard below. Mirrors the admin-lockout guard's row lock in
-    // users.service.ts's disableUser. shopId is part of the lock query
-    // itself (not just a post-hoc check) so a guessed cross-shop orderId can
-    // never lock or read another shop's order row at all.
+    // users.service.ts's disableUser.
     const locked = await tx.$queryRaw<{ id: string; status: VoidStatus | 'COMPLETED' }[]>`
-      SELECT id, status FROM "Order" WHERE id = ${orderId} AND "shopId" = ${shopId} FOR UPDATE
+      SELECT id, status FROM "Order" WHERE id = ${orderId} FOR UPDATE
     `
     const current = locked[0]
     if (!current) {
@@ -180,19 +178,17 @@ async function voidOrder(orderId: string, actorId: string, targetStatus: VoidSta
           reason: `Order #${order.sequenceNumber} ${targetStatus.toLowerCase()}`,
         },
         actorId,
-        shopId,
       )
     }
 
     const updated = await tx.order.update({
-      where: { id: orderId, shopId },
+      where: { id: orderId },
       data: { status: targetStatus, voidedAt: new Date(), voidedById: actorId, voidReason: reason },
       include: orderInclude,
     })
 
     await recordAudit(
       {
-        shopId,
         actorId,
         action: targetStatus === 'CANCELLED' ? 'ORDER_CANCELLED' : 'ORDER_REFUNDED',
         resource: 'Order',
@@ -207,10 +203,10 @@ async function voidOrder(orderId: string, actorId: string, targetStatus: VoidSta
   })
 }
 
-export function cancelOrder(orderId: string, actorId: string, reason: string, shopId: string) {
-  return voidOrder(orderId, actorId, 'CANCELLED', reason, shopId)
+export function cancelOrder(orderId: string, actorId: string, reason: string) {
+  return voidOrder(orderId, actorId, 'CANCELLED', reason)
 }
 
-export function refundOrder(orderId: string, actorId: string, reason: string, shopId: string) {
-  return voidOrder(orderId, actorId, 'REFUNDED', reason, shopId)
+export function refundOrder(orderId: string, actorId: string, reason: string) {
+  return voidOrder(orderId, actorId, 'REFUNDED', reason)
 }

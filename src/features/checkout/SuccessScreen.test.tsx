@@ -2,17 +2,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SuccessScreen } from './SuccessScreen'
-import { AuthContext } from '../auth/authContext'
 import type { OrderRecord } from './types'
 
 function renderSuccessScreen(order: OrderRecord, onNewOrder: () => void) {
-  return render(
-    <AuthContext.Provider
-      value={{ user: null, shop: { id: 'shop-1', name: 'Culture Cup', logoUrl: null }, accessToken: null, isLoading: false, login: vi.fn(), logout: vi.fn() }}
-    >
-      <SuccessScreen order={order} onNewOrder={onNewOrder} />
-    </AuthContext.Provider>,
-  )
+  return render(<SuccessScreen order={order} onNewOrder={onNewOrder} />)
 }
 
 const order: OrderRecord = {

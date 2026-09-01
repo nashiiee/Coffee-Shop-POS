@@ -12,8 +12,6 @@ const { signRefreshToken } = await import('../src/lib/jwt.js')
 
 const baseUser = {
   id: 'user-1',
-  shopId: 'shop-1',
-  shop: { id: 'shop-1', name: 'Coffee Shop POS', logoUrl: null, subscriptionStatus: 'ACTIVE' as const },
   name: 'Ada Admin',
   email: 'ada@coffeeshop.test',
   role: 'ADMIN' as const,
@@ -35,7 +33,7 @@ describe('auth.service login', () => {
 
     expect(result.user).toEqual({ id: 'user-1', name: 'Ada Admin', email: 'ada@coffeeshop.test', role: 'ADMIN' })
     expect(result.user).not.toHaveProperty('passwordHash')
-    expect(result.shop).toEqual({ id: 'shop-1', name: 'Coffee Shop POS', logoUrl: null })
+    expect(result).not.toHaveProperty('shop')
     expect(result.tokens.accessToken).toBeTruthy()
     expect(result.tokens.refreshToken).toBeTruthy()
   })

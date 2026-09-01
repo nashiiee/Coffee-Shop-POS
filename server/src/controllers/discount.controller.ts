@@ -6,7 +6,7 @@ export async function listDiscountsHandler(req: Request, res: Response, next: Ne
   try {
     res
       .status(200)
-      .json(await discountService.listDiscounts(req.query.activeOnly === 'true', req.user!.role, req.user!.shopId))
+      .json(await discountService.listDiscounts(req.query.activeOnly === 'true', req.user!.role))
   } catch (err) {
     next(err)
   }
@@ -14,7 +14,7 @@ export async function listDiscountsHandler(req: Request, res: Response, next: Ne
 
 export async function createDiscountHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const discount = await discountService.createDiscount(req.body as CreateDiscountInput, req.user!.id, req.user!.shopId)
+    const discount = await discountService.createDiscount(req.body as CreateDiscountInput, req.user!.id)
     res.status(201).json(discount)
   } catch (err) {
     next(err)
@@ -27,7 +27,6 @@ export async function updateDiscountHandler(req: Request, res: Response, next: N
       req.params.id as string,
       req.body as UpdateDiscountInput,
       req.user!.id,
-      req.user!.shopId,
     )
     res.status(200).json(discount)
   } catch (err) {
